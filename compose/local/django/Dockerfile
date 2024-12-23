@@ -50,6 +50,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   # psycopg dependencies
   libpq-dev  \
   wait-for-it \
+  # postgis dependencies
+  gdal-bin \
   # Translations dependencies
   gettext \
   # cleaning up unused files

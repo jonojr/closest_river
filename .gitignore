@@ -333,4 +333,7 @@ closest_river/media/
 closest_river/static/webpack_bundles/
 webpack-stats.json
 .env
-.envs/*
+.envs/.production
+
+# Pycharm
+.idea
