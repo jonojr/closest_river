@@ -37,5 +37,9 @@
   "scripts": {
     "dev": "webpack serve --config webpack/dev.config.js",
     "build": "webpack --config webpack/prod.config.js"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-geocoder": "^1.7.0",
+    "maplibre-gl": "^4.7.1"
   }
 }
