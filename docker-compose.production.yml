@@ -1,9 +1,6 @@
 volumes:
-  production_postgres_data: {}
   production_postgres_data_backups: {}
   production_traefik: {}
-  production_django_media: {}
-
   production_redis_data: {}
 
 services:
@@ -14,7 +11,7 @@ services:
 
     image: closest_river_production_django
     volumes:
-      - production_django_media:/app/closest_river/media
+      - /mnt/Data/closest_river/django_media:/app/closest_river/media:rw
     depends_on:
       - postgres
       - redis
@@ -22,6 +19,8 @@ services:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
     command: /start
+    ports:
+      - 5000:5000
 
   postgres:
     build:
@@ -29,24 +28,10 @@ services:
       dockerfile: ./compose/production/postgres/Dockerfile
     image: closest_river_production_postgres
     volumes:
-      - production_postgres_data:/var/lib/postgresql/data
+      - /mnt/Data/closest_river/postgres:/var/lib/postgresql/data
       - production_postgres_data_backups:/backups
     env_file:
       - ./.envs/.production/.postgres
-
-  traefik:
-    build:
-      context: .
-      dockerfile: ./compose/production/traefik/Dockerfile
-    image: closest_river_production_traefik
-    depends_on:
-      - django
-    volumes:
-      - production_traefik:/etc/traefik/acme
-    ports:
-      - '0.0.0.0:80:80'
-      - '0.0.0.0:443:443'
-      - '0.0.0.0:5555:5555'
 
   redis:
     image: docker.io/redis:6
@@ -58,16 +43,20 @@ services:
     <<: *django
     image: closest_river_production_celeryworker
     command: /start-celeryworker
+    ports: []
 
   celerybeat:
     <<: *django
     image: closest_river_production_celerybeat
     command: /start-celerybeat
+    ports: []
 
   flower:
     <<: *django
     image: closest_river_production_flower
     command: /start-flower
+    ports:
+      - 5555:5555
 
   nginx:
     build:
@@ -77,4 +66,6 @@ services:
     depends_on:
       - django
     volumes:
-      - production_django_media:/usr/share/nginx/media:ro
+      - /mnt/Data/closest_river/django_media:/usr/share/nginx/media:ro
+    ports:
+      - 5001:80
