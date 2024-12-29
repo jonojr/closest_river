@@ -10,6 +10,12 @@ ARG BUILD_ENVIRONMENT=local
 RUN apt-get update && apt-get install --no-install-recommends -y \
   # dependencies for building Python packages
   build-essential \
+  cmake \
+  python3-dev \
+  libboost-dev \
+  libexpat1-dev \
+  zlib1g-dev \
+  libbz2-dev \
   # psycopg dependencies
   libpq-dev
 

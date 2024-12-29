@@ -9,14 +9,14 @@
     <meta http-equiv="x-ua-compatible" content="ie=edge" />
     <title>
       {% block title %}
-        Whats my closest river
+        What's my closest river
       {% endblock title %}
     </title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description"
           content="A web-app which displays the closest river to the user with some information" />
     <meta name="author" content="John Roberts" />
-    <link rel="icon" href="{% static 'images/favicons/favicon.ico' %}" />
+    <link rel="icon" href="{% static 'images/favicons/river.png' %}" />
     {% block css %}
       <!-- Your stuff: Third-party CSS libraries go here -->
       <!-- This file stores project-specific CSS -->
@@ -46,7 +46,7 @@
                     aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
             </button>
-            <a class="navbar-brand" href="{% url 'home' %}">Whats my closest river</a>
+            <a class="navbar-brand" href="{% url 'home' %}">What's my closest river</a>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
               <ul class="navbar-nav mr-auto">
                 <li class="nav-item active">
@@ -55,32 +55,12 @@
                 <li class="nav-item">
                   <a class="nav-link" href="{% url 'about' %}">About</a>
                 </li>
-                {% if request.user.is_authenticated %}
-                  <li class="nav-item">
-                    <a class="nav-link" href="{% url 'users:detail' request.user.pk %}">{% translate "My Profile" %}</a>
-                  </li>
-                  <li class="nav-item">
-                    {# URL provided by django-allauth/account/urls.py #}
-                    <a class="nav-link" href="{% url 'account_logout' %}">{% translate "Sign Out" %}</a>
-                  </li>
-                {% else %}
-                  {% if ACCOUNT_ALLOW_REGISTRATION %}
-                    <li class="nav-item">
-                      {# URL provided by django-allauth/account/urls.py #}
-                      <a id="sign-up-link" class="nav-link" href="{% url 'account_signup' %}">{% translate "Sign Up" %}</a>
-                    </li>
-                  {% endif %}
-                  <li class="nav-item">
-                    {# URL provided by django-allauth/account/urls.py #}
-                    <a id="log-in-link" class="nav-link" href="{% url 'account_login' %}">{% translate "Sign In" %}</a>
-                  </li>
-                {% endif %}
               </ul>
             </div>
           </div>
         </nav>
       </div>
-      <div class="container">
+      <div class="container-fluid">
         {% if messages %}
           {% for message in messages %}
             <div class="alert alert-dismissible {% if message.tags %}alert-{{ message.tags }}{% endif %}">
@@ -114,4 +94,7 @@
       {% endcomment %}
     {% endblock inline_javascript %}
   </body>
+  <footer>
+    <a href="https://www.flaticon.com/free-icons/river" title="river icons">River icons created by Freepik - Flaticon</a>
+  </footer>
 </html>

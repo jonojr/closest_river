@@ -10,6 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install --no-install-recommends -y \
   # dependencies for building Python packages
   build-essential \
+  cmake \
+  python3-dev \
+  libboost-dev \
+  libexpat1-dev \
+  zlib1g-dev \
+  libbz2-dev \
   # psycopg dependencies
   libpq-dev \
   # cleaning up unused files
@@ -37,6 +43,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   make \
   # psycopg dependencies
   libpq-dev \
+  # postgis dependencies
+  gdal-bin \
   # Translations dependencies
   gettext \
   # Uncomment below lines to enable Sphinx output to latex and pdf

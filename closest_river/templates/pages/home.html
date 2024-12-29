@@ -1,5 +1,32 @@
 {% extends "base.html" %}
 
+{% load static i18n %}
+
 {% block content %}
-  <p>Test</p>
+  <button id="find-closest-river">Find my closest river</button>
+  <br />
+  <p id="status"></p>
+  <a id="map-link" target="_blank"></a>
+  <div id="map" class="map"></div>
+  <div class="container">
+    <div class="row">
+      <p class="col-lg-1 mb-0">Name:</p>
+      <p id="name" class="col-lg-3"></p>
+      <p class="col-lg-2 mb-0">Distance to river:</p>
+      <p id="distance" class="col-lg-2"></p>
+    </div>
+    <div class="row">
+      <p class="col-lg-2 mb-0">Wikipedia link:</p>
+      <a id="wikipedia" target="_blank" class="col-lg-10"></a>
+    </div>
+    <div class="row">
+      <p class="col-lg-1 mb-0">Destination:</p>
+      <p id="destination" class="col-lg-10"></p>
+    </div>
+  </div>
+  <p id="result"></p>
+  <img id="arrow"
+       style="visibility:hidden"
+       src="{% static 'images/caret-right-fill.svg' %}"
+       alt="River direction arrow" />
 {% endblock content %}
