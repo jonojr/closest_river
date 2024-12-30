@@ -11,4 +11,4 @@ def ingest_osm_data(osm_data_pk: int):
     geo_fabrik_file = data.file
     parser = OsmParser()
     with default_storage.open(geo_fabrik_file.name, "rb") as file:
-        parser.apply_buffer(file.read(), format="osm", locations=True)
+        parser.apply_buffer(file.read(), format="o5m", locations=True)

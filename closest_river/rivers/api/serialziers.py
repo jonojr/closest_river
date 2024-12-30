@@ -6,11 +6,6 @@ from closest_river.rivers.models import RiverSection
 
 
 class RiverSectionSerializer(ModelSerializer):
-    distance = SerializerMethodField()
-
-    def get_distance(self, obj):
-        return round(obj.distance.km, 2)
-
     class Meta:
         model = RiverSection
         fields = "__all__"

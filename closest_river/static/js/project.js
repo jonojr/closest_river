@@ -8,7 +8,7 @@ import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
 const map = new maplibregl.Map({
   container: 'map', // container id
   style:
-    'https://api.maptiler.com/maps/streets/style.json?key=MAPTILER_API_KEY_HERE',
+    'https://api.maptiler.com/maps/streets/style.json?key=API_KEY_HERE',
   center: [135.0951931, -26.3911232],
   zoom: 3, // starting zoom
 });
@@ -20,7 +20,7 @@ map.on('load', (e) => {
   map.addImage('arrow', img);
   map.addSource('river-sections-data', {
     type: 'vector',
-    url: '/rivers/river-sections/tiles.json',
+    url: 'https://closest-river.jonojr.dev/rivers/river-sections/tiles.json',
   });
   map.addLayer({
     id: 'river-sections',
@@ -34,6 +34,18 @@ map.on('load', (e) => {
     paint: {
       'line-color': '#6970ff',
       'line-width': 2,
+    },
+  });
+  map.addLayer({
+    id: 'river-section-arrows',
+    type: 'symbol',
+    source: 'river-sections-data',
+    'source-layer': 'river-sections',
+    layout: {
+      'symbol-placement': 'line',
+      'symbol-spacing': 150,
+      'icon-image': 'arrow', // The arrow image
+      'icon-size': 1,
     },
   });
   map.addSource(`river`, {
@@ -176,7 +188,7 @@ function mapPosition(latitude, longitude) {
         wikipedia.textContent = data.section?.wikipedia;
         wikipedia.href = `https://en.wikipedia.org/wiki/${data.section?.wikipedia}`;
       }
-      distance.textContent = `${data.section.distance}km`;
+      distance.textContent = `${data.distance}km`;
 
       if (data.geometry) {
         map.getSource('river').setData(JSON.parse(data.geometry));

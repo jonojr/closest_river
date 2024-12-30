@@ -159,3 +159,4 @@ SPECTACULAR_SETTINGS["SERVERS"] = [
 ]
 # Your stuff...
 # ------------------------------------------------------------------------------
+VECTOR_TILES_URLS = ["https://closest-river.jonojr.dev/"]
