@@ -7,7 +7,7 @@ import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
 
 const map = new maplibregl.Map({
   container: 'map', // container id
-  style: 'https://api.maptiler.com/maps/streets/style.json?key=API_KEY_HERE',
+  style: 'https://api.maptiler.com/maps/streets-v2/style.json?key=API_KEY_HERE',
   center: [135.0951931, -26.3911232],
   zoom: 3, // starting zoom
 });
