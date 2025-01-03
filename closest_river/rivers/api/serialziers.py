@@ -1,5 +1,4 @@
 from rest_framework.serializers import ModelSerializer
-from rest_framework.serializers import SerializerMethodField
 
 from closest_river.rivers.models import River
 from closest_river.rivers.models import RiverSection
