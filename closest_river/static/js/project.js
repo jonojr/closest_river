@@ -12,6 +12,22 @@ const map = new maplibregl.Map({
   zoom: 3, // starting zoom
 });
 
+function changeCursorOnHover(map, layerName) {
+  'use strict';
+
+  // Change the cursor to a pointer when the mouse is over the places layer.
+  map.on('mouseenter', layerName, () => {
+    map.getCanvas().style.cursor = 'pointer';
+  });
+
+  // Change it back to a pointer when it leaves.
+  map.on('mouseleave', layerName, () => {
+    map.getCanvas().style.cursor = '';
+  });
+}
+
+let distanceToClosestRiver = 0;
+
 map.on('load', (e) => {
   'use strict';
 
@@ -19,7 +35,7 @@ map.on('load', (e) => {
   map.addImage('arrow', img);
   map.addSource('river-sections-data', {
     type: 'vector',
-    url: 'https://closest-river.jonojr.dev/rivers/river-sections/tiles.json',
+    url: '/rivers/river-sections/tiles.json',
   });
   map.addLayer({
     id: 'river-sections',
@@ -78,6 +94,27 @@ map.on('load', (e) => {
       'icon-size': 1.5,
     },
   });
+
+  map.addSource(`line_to_river`, {
+    type: 'geojson',
+    data: {
+      type: 'LineString',
+      geometry: {
+        type: 'LineString',
+        coordinates: [],
+      },
+    },
+  });
+  map.addLayer({
+    id: `line_to_river`,
+    type: 'line',
+    source: `line_to_river`,
+    paint: {
+      'line-color': 'rgba(47,47,48,0.91)',
+      'line-width': 5,
+      'line-dasharray': [2, 1],
+    },
+  });
 });
 
 map.on('click', 'river', (e) => {
@@ -110,6 +147,14 @@ map.on('click', 'river-sections', (e) => {
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
 });
 
+map.on('click', 'line_to_river', (e) => {
+  'use strict';
+
+  let html = `<div class="container"><p>Distance to the closest river: ${distanceToClosestRiver}km</p></div>`;
+
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+});
+
 const nav = new maplibregl.NavigationControl({ showCompass: true });
 map.addControl(nav, 'top-right');
 const scale = new maplibregl.ScaleControl({
@@ -118,29 +163,9 @@ const scale = new maplibregl.ScaleControl({
 });
 map.addControl(scale);
 
-// Change the cursor to a pointer when the mouse is over the places layer.
-map.on('mouseenter', 'river', () => {
-  'use strict';
-  map.getCanvas().style.cursor = 'pointer';
-});
-
-// Change it back to a pointer when it leaves.
-map.on('mouseleave', 'river', () => {
-  'use strict';
-  map.getCanvas().style.cursor = '';
-});
-
-// Change the cursor to a pointer when the mouse is over the places layer.
-map.on('mouseenter', 'river-sections', () => {
-  'use strict';
-  map.getCanvas().style.cursor = 'pointer';
-});
-
-// Change it back to a pointer when it leaves.
-map.on('mouseleave', 'river-sections', () => {
-  'use strict';
-  map.getCanvas().style.cursor = '';
-});
+changeCursorOnHover(map, 'river');
+changeCursorOnHover(map, 'river-sections');
+changeCursorOnHover(map, 'line_to_river');
 
 const marker = new maplibregl.Marker();
 
@@ -188,6 +213,20 @@ function mapPosition(latitude, longitude) {
         wikipedia.href = `https://en.wikipedia.org/wiki/${data.section?.wikipedia}`;
       }
       distance.textContent = `${data.distance}km`;
+
+      distanceToClosestRiver = data.distance;
+
+      map.getSource('line_to_river').setData({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [longitude, latitude],
+            [data.closest_point_on_river[0], data.closest_point_on_river[1]],
+          ],
+        },
+      });
 
       if (data.geometry) {
         map.getSource('river').setData(JSON.parse(data.geometry));
