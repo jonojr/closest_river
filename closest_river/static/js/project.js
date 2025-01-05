@@ -4,6 +4,7 @@ import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
 
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
+import { SearchButtonControl } from './SearchButtonControl';
 
 const map = new maplibregl.Map({
   container: 'map', // container id
@@ -155,13 +156,20 @@ map.on('click', 'line_to_river', (e) => {
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
 });
 
-const nav = new maplibregl.NavigationControl({ showCompass: true });
+const nav = new maplibregl.NavigationControl({ showCompass: false });
 map.addControl(nav, 'top-right');
+
 const scale = new maplibregl.ScaleControl({
   maxWidth: 80,
   unit: 'metric',
 });
 map.addControl(scale);
+
+const compassControl = new maplibregl.NavigationControl({
+  showCompass: true,
+  showZoom: false,
+});
+map.addControl(compassControl, 'bottom-left');
 
 changeCursorOnHover(map, 'river');
 changeCursorOnHover(map, 'river-sections');
@@ -272,6 +280,7 @@ const geocoderApi = {
     };
   },
 };
+map.addControl(new SearchButtonControl(), 'top-left');
 map.addControl(
   new MaplibreGeocoder(geocoderApi, {
     maplibregl,

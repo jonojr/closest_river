@@ -18,6 +18,7 @@
     </content>
     <orderEntry type="jdk" jdkName="Remote Python 3.12.8 Docker Compose (django)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="bootstrap-icons" level="application" />
   </component>
   <component name="PackageRequirementsSettings">
     <option name="requirementsPath" value="$MODULE_DIR$/requirements/local.txt" />
