@@ -3,9 +3,6 @@
 {% load static i18n %}
 
 {% block content %}
-  <button id="find-closest-river">Find my closest river</button>
-  <br />
-  <p id="status"></p>
   <a id="map-link" target="_blank"></a>
   <div id="map" class="map-height"></div>
   <div class="container">
@@ -26,6 +23,7 @@
       <p id="destination" class="col-8"></p>
     </div>
   </div>
+  <p id="status"></p>
   <p id="result"></p>
   <img id="arrow"
        style="visibility:hidden"
