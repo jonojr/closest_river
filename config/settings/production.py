@@ -45,7 +45,7 @@ SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#session-cookie-name
 SESSION_COOKIE_NAME = "__Secure-sessionid"
-CSRF_TRUSTED_ORIGINS = ["https://closest-river.jonojr.dev"]
+CSRF_TRUSTED_ORIGINS = ["https://closest-river.jonojr.dev", "https://myclosestriver.com"]
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-secure
 CSRF_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-name
@@ -158,8 +158,8 @@ LOGGING = {
 # -------------------------------------------------------------------------------
 # Tools that generate code samples can use SERVERS to point to the correct domain
 SPECTACULAR_SETTINGS["SERVERS"] = [
-    {"url": "https://closest-river.jonojr.tech", "description": "Production server"},
+    {"url": "https://myclosestriver.com", "description": "Production server"},
 ]
 # Your stuff...
 # ------------------------------------------------------------------------------
-VECTOR_TILES_URLS = ["https://closest-river.jonojr.dev/"]
+VECTOR_TILES_URLS = ["https://myclosestriver.com"]
