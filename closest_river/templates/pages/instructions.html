@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="m-3">
+    <h1>How to use</h1>
+    <p>
+      The Map page will show rivers highlighted and with directions of flow downstream. Feel free to browse the map to see the river systems worldwide and locally in more detail by zooming in.
+    </p>
+    <p>Click on any river to find its name and other information that may be available.</p>
+    <p>
+      Note the scale bar and North point in the bottom left corner. Click on the North point if you wish to re-orientate the map as North up the page at any stage. Note also the plus and minus zoom icon in the top right corner.
+    </p>
+    <p>
+      To search the closest river from the location of a mobile device click on the ‘find my closest river’ search icon shown in blue. Alternatively use the search bar displayed in white and type in an address or location to find the closest river which will then be highlighted in dark blue. A distance to the river will be shown as a dotted line and shown in kilometres.
+    </p>
+    <p>
+      Smaller water-courses such as creeks and streams are only visible when zoomed in, and will not be highlighted as your closest river.
+    </p>
+    <i>Before using the app read the <a href="{% url 'cautions' %}">Cautions</a> page and understand the apps limitations.</i>
+  </div>
+{% endblock content %}

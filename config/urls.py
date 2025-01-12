@@ -15,9 +15,24 @@ from closest_river import rivers
 urlpatterns = [
     path("", TemplateView.as_view(template_name="pages/home.html"), name="home"),
     path(
+        "instructions/",
+        TemplateView.as_view(template_name="pages/instructions.html"),
+        name="instructions",
+    ),
+    path(
+        "cautions/",
+        TemplateView.as_view(template_name="pages/cautions.html"),
+        name="cautions",
+    ),
+    path(
         "about/",
         TemplateView.as_view(template_name="pages/about.html"),
         name="about",
+    ),
+    path(
+        "contact/",
+        TemplateView.as_view(template_name="pages/contact.html"),
+        name="contact",
     ),
     # Django Admin, use {% url 'admin:index' %}
     path(settings.ADMIN_URL, admin.site.urls),
