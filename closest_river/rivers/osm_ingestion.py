@@ -14,6 +14,7 @@ class OsmParser(osmium.SimpleHandler):
     def __init__(self):
         super().__init__()
         self.model = apps.get_model("rivers", "RiverSection")
+        self.way_count = 0
 
         self.waterway_tags = [
             "river",
@@ -23,7 +24,15 @@ class OsmParser(osmium.SimpleHandler):
     def way(self, way):
         """This method gets called for every way in OSM File"""
         if "waterway" in way.tags and way.tags["waterway"] in self.waterway_tags:
-            logger.info("Way being ingested: %s", way.id)
+            self.way_count += 1
+
+            if self.way_count % 100 == 0:
+                logger.info(
+                    "Way being ingested: %s\nIngested: %s ways",
+                    way.id,
+                    self.way_count,
+                )
+
             coordinates = [
                 (node.location.lon, node.location.lat)
                 for node in way.nodes
