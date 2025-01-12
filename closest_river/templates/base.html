@@ -48,14 +48,23 @@
                     aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
             </button>
-            <a class="navbar-brand" href="{% url 'home' %}">What's my closest river</a>
+            <a class="navbar-brand" href="{% url 'home' %}">My closest river</a>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
               <ul class="navbar-nav mr-auto">
                 <li class="nav-item active">
-                  <a class="nav-link" href="{% url 'home' %}">Home <span class="visually-hidden">(current)</span></a>
+                  <a class="nav-link" href="{% url 'home' %}">Map <span class="visually-hidden">(current)</span></a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="{% url 'instructions' %}">How to use</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="{% url 'cautions' %}">Cautions</a>
                 </li>
                 <li class="nav-item">
                   <a class="nav-link" href="{% url 'about' %}">About</a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link" href="{% url 'contact' %}">Contact</a>
                 </li>
               </ul>
             </div>
@@ -96,9 +105,35 @@
       {% endcomment %}
     {% endblock inline_javascript %}
   </body>
-  <footer>
-    <a href="https://www.flaticon.com/free-icons/river"
-       title="river icons"
-       class="p-3">River icons created by Freepik - Flaticon</a>
+  <footer class="d-flex flex-wrap justify-content-between align-items-center py-3 my-4 border-top">
+    <div class="col-md-4 d-flex align-items-center">
+      <a href="https://www.flaticon.com/free-icons/river"
+         class="ms-2 mb-3 me-2 mb-md-0 text-body-secondary text-decoration-none lh-1"
+         title="river icons"
+         class="p-3">River icons created by Freepik - Flaticon</a>
+    </div>
+    <ul class="nav col-md-4 justify-content-end list-unstyled d-flex">
+      <li class="ms-3">
+        <a class="text-body-secondary" href="#">
+          <svg class="bi" width="24" height="24">
+            <use xlink:href="#twitter"></use>
+          </svg>
+        </a>
+      </li>
+      <li class="ms-3">
+        <a class="text-body-secondary" href="#">
+          <svg class="bi" width="24" height="24">
+            <use xlink:href="#instagram"></use>
+          </svg>
+        </a>
+      </li>
+      <li class="ms-3">
+        <a class="text-body-secondary" href="#">
+          <svg class="bi" width="24" height="24">
+            <use xlink:href="#facebook"></use>
+          </svg>
+        </a>
+      </li>
+    </ul>
   </footer>
 </html>

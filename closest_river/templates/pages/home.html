@@ -1,7 +1,16 @@
 {% extends "base.html" %}
 
 {% load static i18n %}
+{% load render_bundle from webpack_loader %}
 
+{% block css %}
+  {{ block.super }}
+  {% render_bundle 'mainMap' 'css' %}
+{% endblock css %}
+{% block javascript %}
+  {{ block.super }}
+  {% render_bundle 'mainMap' 'js' attrs='defer' %}
+{% endblock javascript %}
 {% block content %}
   <a id="map-link" target="_blank"></a>
   <div id="map" class="map-height"></div>

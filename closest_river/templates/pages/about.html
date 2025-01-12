@@ -1,7 +1,24 @@
 {% extends "base.html" %}
 
+{% load static %}
+
 {% block content %}
-  <p>A small app that allows you to find the river closest to a point.</p>
-  <p>River data comes from Open Street Map (OSM)</p>
-  <p>Backend is powered by PostGIS and Django</p>
+  <div class="m-3">
+    <h1>About</h1>
+    <p>'My Closest River' is a collaboration between a Software Engineer and a Landscape Designer.</p>
+    <p>
+      The aim of ‘My Closest River’ is to help symbolically re-connect people and the rivers around them and to illustrate the magnificent network of waterways and the eco-systems and peoples that surround them.
+    </p>
+    <p>
+      Struck by the desire to present the often hidden and forgotten river systems of Australia to an increasingly urbanized people ‘My Closest River’ shows the closest river to whoever wishes to discover the world around them.  Rivers are shown and highlighted when selected. Added to this is the normal direction of flow making it easy to follow the river upstream or downstream to other destinations linking places and people in a very real and natural way.
+    </p>
+    <img src="{% static 'images/RiverFish.jpg' %}"
+         alt="A sculpture of fish made from rock and metal with a river flowing behind it." />
+    <p>
+      Fish sculptures including ‘River Fish’ by Roy R on the Goulburn River Victoria, Australia symbolise energy, the ecosystem and the desire to strive upstream. Orientated upstream the symbolism is captured and in slow moving rivers like portions of the Lower Goulburn in Victoria ‘River Fish’ shows the direction of flow helping to create an understanding of places both up and down stream creating a unique sense of place.
+    </p>
+    <p>
+      Rivers are full of energy and life. As ecological ‘edges’ river margins are where multiple ecosystems intermingle. They draw together a diversity of creatures like nowhere else. Water, in all cultures, draws in people too. Symbolism and art combine along with a deep history of connection and the fundamental understanding that waterways are deep down part of what it means to feel human.
+    </p>
+  </div>
 {% endblock content %}

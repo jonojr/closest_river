@@ -1,9 +1,14 @@
 const { merge } = require('webpack-merge');
 const commonConfig = require('./common.config');
+const Dotenv = require('dotenv-webpack');
+const path = require('node:path');
 
 module.exports = merge(commonConfig, {
   mode: 'development',
   devtool: 'inline-source-map',
+  plugins: [
+    new Dotenv({ path: path.resolve(__dirname, '../.envs/.local/.node') }),
+  ],
   devServer: {
     port: 3000,
     proxy: [
