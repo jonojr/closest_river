@@ -13,7 +13,7 @@ class RiverSectionVectorLayer(VectorLayer):
     model = RiverSection
     geom_field = "geometry"
     id = "river-sections"
-    tile_fields = ("name", "tags", "river__tags")
+    tile_fields = ("osm_way_id",)
     min_zoom = 0
 
     def get_tile(self, x, y, z):

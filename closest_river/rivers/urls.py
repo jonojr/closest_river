@@ -2,6 +2,9 @@ from django.urls import path
 from django.views.defaults import page_not_found
 
 from closest_river.rivers.api.views import ClosestRiver
+from closest_river.rivers.api.views import RiverGeo
+from closest_river.rivers.api.views import RiverSectionPopupInfo
+from closest_river.rivers.views import RiverDetailView
 from closest_river.rivers.views import RiverSectionTileJSON
 from closest_river.rivers.views import RiverSectionTileView
 
@@ -25,8 +28,23 @@ urlpatterns = [
         name="river_sections_json",
     ),
     path(
+        "river-sections/<int:osm_way_id>/popup_data/",
+        RiverSectionPopupInfo.as_view(),
+        name="river_section_popup_data",
+    ),
+    path(
         "features/tile/{z}/{x}/{y}",
         page_not_found,
         name="river_sections_pattern",
+    ),
+    path(
+        "<int:osm_id>/",
+        RiverDetailView.as_view(),
+        name="river_detail",
+    ),
+    path(
+        "geometry/<int:osm_id>/",
+        RiverGeo.as_view(),
+        name="river_geo",
     ),
 ]

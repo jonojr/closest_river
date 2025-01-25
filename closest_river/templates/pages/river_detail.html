@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% load static i18n %}
+{% load render_bundle from webpack_loader %}
+
+{% block css %}
+  {{ block.super }}
+  {% render_bundle 'mainMap' 'css' %}
+{% endblock css %}
+{% block javascript %}
+  {{ block.super }}
+  {% render_bundle 'riverDetailMap' 'js' attrs='defer' %}
+{% endblock javascript %}
+{% block content %}
+  <div class="container">
+    <h1>{{ river.name }}</h1>
+    <div class="row">
+      <div class="col-lg-8">
+        <div id="map" class="map-height"></div>
+      </div>
+      <div class="col-4">
+        <div class="row">
+          <div class="col">Destination:</div>
+          <div class="col">{{ river.destination }}</div>
+        </div>
+        {% if river.wikipedia %}
+          <div class="row">
+            <div class="col">Wikipedia:</div>
+            <div class="col">
+              <a href="https://en.wikipedia.org/wiki/{{ river.wikipedia }}"
+                 target="_blank">{{ river.wikipedia }}</a>
+            </div>
+          </div>
+        {% endif %}
+        {% if river.tags.wikidata %}
+          <div class="row">
+            <div class="col">Wikidata:</div>
+            <div class="col">
+              <a href="https://www.wikidata.org/wiki/{{ river.tags.wikidata }}"
+                 target="_blank">{{ river.tags.wikidata }}</a>
+            </div>
+          </div>
+        {% endif %}
+        <div class="row">
+          <div class="col">OSM ID:</div>
+          <a class="col"
+             id="osm_id"
+             href="https://www.openstreetmap.org/relation/{{ river.osm_id }}/">{{ river.osm_id }}</a>
+        </div>
+        <div class="row">
+          <div class="col">Tags:</div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <ul>
+              {% for key, value in river.tags.items %}<li>{{ key }}: {{ value }}</li>{% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <img id="arrow"
+       style="visibility:hidden"
+       src="{% static 'images/caret-right-fill.svg' %}"
+       alt="River direction arrow" />
+{% endblock content %}

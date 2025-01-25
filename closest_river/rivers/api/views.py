@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from closest_river.rivers.api.serialziers import RiverSectionSerializer
 from closest_river.rivers.api.serialziers import RiverSerializer
+from closest_river.rivers.models import River
 from closest_river.rivers.models import RiverSection
 
 
@@ -55,3 +56,65 @@ class ClosestRiver(APIView):
                 "geometry": geometry,
             },
         )
+
+
+class RiverGeo(APIView):
+    permission_classes = []
+
+    def get(self, request, osm_id: int):
+        river = River.objects.get(osm_id=osm_id)
+        geometry = serialize("geojson", river.sections.all())
+
+        return Response(
+            {
+                "geometry": geometry,
+            },
+        )
+
+
+def process_tag(tag_name: str, value: str | int, all_tags: dict) -> (str, dict):
+    if tag_name == "name":
+        if "river_osm_id" in all_tags:
+            return "Name", {
+                "text": value,
+                "link": f"/rivers/{all_tags['river_osm_id']}/",
+            }
+        return "Name", {"text": value}
+    if tag_name == "wikipedia":
+        return "Wikipedia", {
+            "text": value,
+            "link": f"https://en.wikipedia.org/wiki/{value}",
+        }
+    if tag_name == "wikidata":
+        return "Wikidata", {
+            "text": value,
+            "link": f"https://www.wikidata.org/wiki/{value}",
+        }
+
+    return tag_name, {"text": value}
+
+
+class RiverSectionPopupInfo(APIView):
+    permission_classes = []
+
+    def get(self, request, osm_way_id: int):
+        river_section = RiverSection.objects.get(osm_way_id=osm_way_id)
+        river = river_section.river
+
+        popup_data = {}
+        if river:
+            popup_data.update(river.tags)
+            popup_data["river_osm_id"] = river.osm_id
+
+        popup_data.update(river_section.tags)
+        popup_data["name"] = river.name if river else river_section.name
+
+        final_popup_data = {}
+
+        for key, value in popup_data.items():
+            if key in ["river_osm_id", "osm_id"]:
+                continue
+            display_key, display_data = process_tag(key, value, popup_data)
+            final_popup_data[display_key] = display_data
+
+        return Response(final_popup_data)
