@@ -2,6 +2,8 @@ from django.urls import path
 from django.views.defaults import page_not_found
 
 from closest_river.rivers.api.views import ClosestRiver
+from closest_river.rivers.api.views import RiverGeo
+from closest_river.rivers.views import RiverDetailView
 from closest_river.rivers.views import RiverSectionTileJSON
 from closest_river.rivers.views import RiverSectionTileView
 
@@ -28,5 +30,15 @@ urlpatterns = [
         "features/tile/{z}/{x}/{y}",
         page_not_found,
         name="river_sections_pattern",
+    ),
+    path(
+        "<int:osm_id>/",
+        RiverDetailView.as_view(),
+        name="river_detail",
+    ),
+    path(
+        "geometry/<int:osm_id>/",
+        RiverGeo.as_view(),
+        name="river_geo",
     ),
 ]

@@ -9,6 +9,10 @@ module.exports = {
     project: path.resolve(__dirname, '../closest_river/static/js/project'),
     vendors: path.resolve(__dirname, '../closest_river/static/js/vendors'),
     mainMap: path.resolve(__dirname, '../closest_river/static/js/mainMap'),
+    riverDetailMap: path.resolve(
+      __dirname,
+      '../closest_river/static/js/riverDetailMap',
+    ),
   },
   output: {
     path: path.resolve(__dirname, '../closest_river/static/webpack_bundles/'),

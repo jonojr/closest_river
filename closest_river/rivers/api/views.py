@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from closest_river.rivers.api.serialziers import RiverSectionSerializer
 from closest_river.rivers.api.serialziers import RiverSerializer
+from closest_river.rivers.models import River
 from closest_river.rivers.models import RiverSection
 
 
@@ -52,6 +53,20 @@ class ClosestRiver(APIView):
                 "section": section_serializer.data,
                 "distance": round(river_section.distance.km, 2),
                 "closest_point_on_river": river_section.closest_point.coords,
+                "geometry": geometry,
+            },
+        )
+
+
+class RiverGeo(APIView):
+    permission_classes = []
+
+    def get(self, request, osm_id: int):
+        river = River.objects.get(osm_id=osm_id)
+        geometry = serialize("geojson", river.sections.all())
+
+        return Response(
+            {
                 "geometry": geometry,
             },
         )

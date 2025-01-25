@@ -136,8 +136,19 @@ map.on('click', 'river-sections', (e) => {
   'use strict';
   const description = e.features[0].properties;
 
+  let tags_already_shown = [];
+
   let html = '<div class="container">';
-  for (const key of Object.keys(description)) {
+  if (description.osm_id !== undefined) {
+    tags_already_shown.push('name');
+    html += `<div class="row">
+            <p class="col-5" style="text-wrap: pretty;">name</p>
+            <a class="col-7" style="text-wrap: pretty;" href="rivers/${description.osm_id}/" target="_blank">${description.name}</a>
+        </div>`;
+  }
+  for (const key of Object.keys(description).filter(
+    (key) => !tags_already_shown.includes(key),
+  )) {
     html += `<div class="row">
             <p class="col-5" style="text-wrap: pretty;">${key}</p><p class="col-7" style="text-wrap: pretty;">${description[key]}</p>
         </div>`;
@@ -205,6 +216,7 @@ function mapPosition(latitude, longitude) {
       // result.textContent = JSON.stringify(data, null, 4);
       if (data.section.river) {
         name.textContent = data.river.name;
+        name.href = `/rivers/${data.river.osm_id}/`;
         if (data.river.destination) {
           destination.textContent = data.river.destination;
         }
