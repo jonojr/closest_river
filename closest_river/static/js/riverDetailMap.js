@@ -1,9 +1,9 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
+import '@mapbox-controls/ruler/src/index.css';
 
 import maplibregl from 'maplibre-gl';
-import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
-import { SearchButtonControl } from './SearchButtonControl';
+import RulerControl from '@mapbox-controls/ruler';
 
 const map = new maplibregl.Map({
   container: 'map', // container id
@@ -31,39 +31,54 @@ let distanceToClosestRiver = 0;
 map.on('load', (e) => {
   'use strict';
 
+  const layers = map.getStyle().layers;
+  // Find the index of the first symbol layer in the map style
+  let firstSymbolId;
+  for (let i = 0; i < layers.length; i++) {
+    if (layers[i].type === 'symbol') {
+      firstSymbolId = layers[i].id;
+      break;
+    }
+  }
+
   const img = document.querySelector('#arrow');
   map.addImage('arrow', img);
   map.addSource('river-sections-data', {
     type: 'vector',
     url: '/rivers/river-sections/tiles.json',
-    minzoom: 7,
   });
-  map.addLayer({
-    id: 'river-sections',
-    type: 'line',
-    source: 'river-sections-data',
-    'source-layer': 'river-sections',
-    layout: {
-      'line-join': 'round',
-      'line-cap': 'round',
+  map.addLayer(
+    {
+      id: 'river-sections',
+      type: 'line',
+      source: 'river-sections-data',
+      'source-layer': 'river-sections',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': 'rgba(105,112,255,0.3)',
+        'line-width': 2,
+      },
     },
-    paint: {
-      'line-color': 'rgba(105,112,255,0.3)',
-      'line-width': 2,
+    firstSymbolId,
+  );
+  map.addLayer(
+    {
+      id: 'river-section-arrows',
+      type: 'symbol',
+      source: 'river-sections-data',
+      'source-layer': 'river-sections',
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 150,
+        'icon-image': 'arrow', // The arrow image
+        'icon-size': 1,
+      },
     },
-  });
-  map.addLayer({
-    id: 'river-section-arrows',
-    type: 'symbol',
-    source: 'river-sections-data',
-    'source-layer': 'river-sections',
-    layout: {
-      'symbol-placement': 'line',
-      'symbol-spacing': 150,
-      'icon-image': 'arrow', // The arrow image
-      'icon-size': 1,
-    },
-  });
+    firstSymbolId,
+  );
   map.addSource(`river`, {
     type: 'geojson',
     data: {
@@ -71,33 +86,38 @@ map.on('load', (e) => {
       features: [], // Start with no lines
     },
   });
-  map.addLayer({
-    id: `river`,
-    type: 'line',
-    source: `river`,
-    layout: {
-      'line-join': 'round',
-      'line-cap': 'round',
+  map.addLayer(
+    {
+      id: `river`,
+      type: 'line',
+      source: `river`,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': 'rgba(12,35,182,0.91)',
+        'line-width': 5,
+      },
     },
-    paint: {
-      'line-color': 'rgba(12,35,182,0.91)',
-      'line-width': 5,
+    firstSymbolId,
+  );
+  map.addLayer(
+    {
+      id: 'arrows',
+      type: 'symbol',
+      source: 'river',
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 150,
+        'icon-image': 'arrow', // The arrow image
+        'icon-size': 1.5,
+      },
     },
-  });
-  map.addLayer({
-    id: 'arrows',
-    type: 'symbol',
-    source: 'river',
-    layout: {
-      'symbol-placement': 'line',
-      'symbol-spacing': 150,
-      'icon-image': 'arrow', // The arrow image
-      'icon-size': 1.5,
-    },
-  });
+    firstSymbolId,
+  );
 
   const osm_id = document.querySelector('#osm_id').innerText;
-  console.log(osm_id);
   fetch(`/rivers/geometry/${osm_id}/`)
     .then((response) => response.json())
     .then((data) => {
@@ -109,8 +129,6 @@ map.on('load', (e) => {
         acc.push(...feature.geometry.coordinates);
         return acc;
       }, []);
-
-      console.log(all_coordinates);
       const bounds = all_coordinates.reduce(
         (bounds, coord) => {
           return bounds.extend(coord);
@@ -119,7 +137,7 @@ map.on('load', (e) => {
       );
 
       map.fitBounds(bounds, {
-        padding: 30,
+        padding: 40,
       });
     });
 });
@@ -143,8 +161,19 @@ map.on('click', 'river-sections', (e) => {
   'use strict';
   const description = e.features[0].properties;
 
+  let tags_already_shown = [];
+
   let html = '<div class="container">';
-  for (const key of Object.keys(description)) {
+  if (description.osm_id !== undefined) {
+    tags_already_shown.push('name');
+    html += `<div class="row">
+            <p class="col-5" style="text-wrap: pretty;">name</p>
+            <a class="col-7" style="text-wrap: pretty;" href="/rivers/${description.osm_id}/" target="_blank">${description.name}</a>
+        </div>`;
+  }
+  for (const key of Object.keys(description).filter(
+    (key) => !tags_already_shown.includes(key),
+  )) {
     html += `<div class="row">
             <p class="col-5" style="text-wrap: pretty;">${key}</p><p class="col-7" style="text-wrap: pretty;">${description[key]}</p>
         </div>`;
@@ -156,6 +185,7 @@ map.on('click', 'river-sections', (e) => {
 
 const nav = new maplibregl.NavigationControl({ showCompass: false });
 map.addControl(nav, 'top-right');
+map.addControl(new RulerControl(), 'top-right');
 
 const scale = new maplibregl.ScaleControl({
   maxWidth: 80,
