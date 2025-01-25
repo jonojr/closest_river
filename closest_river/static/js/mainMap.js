@@ -1,6 +1,8 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
+import '@mapbox-controls/ruler/src/index.css';
 
+import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
 import { SearchButtonControl } from './SearchButtonControl';
@@ -31,38 +33,54 @@ let distanceToClosestRiver = 0;
 map.on('load', (e) => {
   'use strict';
 
+  const layers = map.getStyle().layers;
+  // Find the index of the first symbol layer in the map style
+  let firstSymbolId;
+  for (let i = 0; i < layers.length; i++) {
+    if (layers[i].type === 'symbol') {
+      firstSymbolId = layers[i].id;
+      break;
+    }
+  }
+
   const img = document.querySelector('#arrow');
   map.addImage('arrow', img);
   map.addSource('river-sections-data', {
     type: 'vector',
     url: '/rivers/river-sections/tiles.json',
   });
-  map.addLayer({
-    id: 'river-sections',
-    type: 'line',
-    source: 'river-sections-data',
-    'source-layer': 'river-sections',
-    layout: {
-      'line-join': 'round',
-      'line-cap': 'round',
+  map.addLayer(
+    {
+      id: 'river-sections',
+      type: 'line',
+      source: 'river-sections-data',
+      'source-layer': 'river-sections',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#6970ff',
+        'line-width': 2,
+      },
     },
-    paint: {
-      'line-color': '#6970ff',
-      'line-width': 2,
+    firstSymbolId,
+  );
+  map.addLayer(
+    {
+      id: 'river-section-arrows',
+      type: 'symbol',
+      source: 'river-sections-data',
+      'source-layer': 'river-sections',
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 150,
+        'icon-image': 'arrow', // The arrow image
+        'icon-size': 1,
+      },
     },
-  });
-  map.addLayer({
-    id: 'river-section-arrows',
-    type: 'symbol',
-    source: 'river-sections-data',
-    'source-layer': 'river-sections',
-    layout: {
-      'symbol-placement': 'line',
-      'symbol-spacing': 150,
-      'icon-image': 'arrow', // The arrow image
-      'icon-size': 1,
-    },
-  });
+    firstSymbolId,
+  );
   map.addSource(`river`, {
     type: 'geojson',
     data: {
@@ -70,30 +88,36 @@ map.on('load', (e) => {
       features: [], // Start with no lines
     },
   });
-  map.addLayer({
-    id: `river`,
-    type: 'line',
-    source: `river`,
-    layout: {
-      'line-join': 'round',
-      'line-cap': 'round',
+  map.addLayer(
+    {
+      id: `river`,
+      type: 'line',
+      source: `river`,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': 'rgba(12,35,182,0.91)',
+        'line-width': 5,
+      },
     },
-    paint: {
-      'line-color': 'rgba(12,35,182,0.91)',
-      'line-width': 5,
+    firstSymbolId,
+  );
+  map.addLayer(
+    {
+      id: 'arrows',
+      type: 'symbol',
+      source: 'river',
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 150,
+        'icon-image': 'arrow', // The arrow image
+        'icon-size': 1.5,
+      },
     },
-  });
-  map.addLayer({
-    id: 'arrows',
-    type: 'symbol',
-    source: 'river',
-    layout: {
-      'symbol-placement': 'line',
-      'symbol-spacing': 150,
-      'icon-image': 'arrow', // The arrow image
-      'icon-size': 1.5,
-    },
-  });
+    firstSymbolId,
+  );
 
   map.addSource(`line_to_river`, {
     type: 'geojson',
@@ -105,16 +129,19 @@ map.on('load', (e) => {
       },
     },
   });
-  map.addLayer({
-    id: `line_to_river`,
-    type: 'line',
-    source: `line_to_river`,
-    paint: {
-      'line-color': 'rgba(47,47,48,0.91)',
-      'line-width': 5,
-      'line-dasharray': [2, 1],
+  map.addLayer(
+    {
+      id: `line_to_river`,
+      type: 'line',
+      source: `line_to_river`,
+      paint: {
+        'line-color': 'rgba(47,47,48,0.91)',
+        'line-width': 5,
+        'line-dasharray': [2, 1],
+      },
     },
-  });
+    firstSymbolId,
+  );
 });
 
 map.on('click', 'river', (e) => {
@@ -168,6 +195,8 @@ map.on('click', 'line_to_river', (e) => {
 
 const nav = new maplibregl.NavigationControl({ showCompass: false });
 map.addControl(nav, 'top-right');
+
+map.addControl(new RulerControl(), 'top-right');
 
 const scale = new maplibregl.ScaleControl({
   maxWidth: 80,
