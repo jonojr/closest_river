@@ -161,26 +161,27 @@ map.on('click', 'river-sections', (e) => {
   'use strict';
   const description = e.features[0].properties;
 
-  let tags_already_shown = [];
-
   let html = '<div class="container">';
-  if (description.osm_id !== undefined) {
-    tags_already_shown.push('name');
-    html += `<div class="row">
-            <p class="col-5" style="text-wrap: pretty;">name</p>
-            <a class="col-7" style="text-wrap: pretty;" href="/rivers/${description.osm_id}/" target="_blank">${description.name}</a>
-        </div>`;
-  }
-  for (const key of Object.keys(description).filter(
-    (key) => !tags_already_shown.includes(key),
-  )) {
-    html += `<div class="row">
-            <p class="col-5" style="text-wrap: pretty;">${key}</p><p class="col-7" style="text-wrap: pretty;">${description[key]}</p>
-        </div>`;
-  }
-  html += '</div>';
 
-  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+  fetch(`/rivers/river-sections/${description.osm_way_id}/popup_data/`)
+    .then((response) => response.json())
+    .then((data) => {
+      for (const key of Object.keys(data)) {
+        const value = data[key];
+        html += '<div class="row">';
+        html += `<p class="col-5" style="text-wrap: pretty;">${key}</p>`;
+
+        if (value.hasOwnProperty('link')) {
+          html += `<a class="col-7" style="text-wrap: pretty;" href="${value.link}" target="_blank">${value.text}</a>`;
+        } else {
+          html += `<p class="col-7" style="text-wrap: pretty;">${value.text}</p>`;
+        }
+        html += `</div>`;
+      }
+      html += '</div>';
+
+      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
 });
 
 const nav = new maplibregl.NavigationControl({ showCompass: false });
