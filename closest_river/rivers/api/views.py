@@ -3,6 +3,7 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.db.models.functions import GeometryDistance
 from django.contrib.gis.geos import Point
 from django.core.serializers import serialize
+from django.http import JsonResponse
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -69,6 +70,18 @@ class RiverGeo(APIView):
             {
                 "geometry": geometry,
             },
+        )
+
+
+class RiverElevation(APIView):
+    permission_classes = []
+
+    def get(self, request, osm_id: int):
+        river = River.objects.get(osm_id=osm_id)
+
+        return JsonResponse(
+            river.elevations,
+            safe=False,
         )
 
 

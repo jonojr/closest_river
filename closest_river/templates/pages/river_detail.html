@@ -10,6 +10,7 @@
 {% block javascript %}
   {{ block.super }}
   {% render_bundle 'riverDetailMap' 'js' attrs='defer' %}
+  {% render_bundle 'riverDetailElevationChart' 'js' attrs='defer' %}
 {% endblock javascript %}
 {% block content %}
   <div class="container">
@@ -57,6 +58,11 @@
             </ul>
           </div>
         </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div id="elevation_chart" class="river-elevation-graph-height"></div>
       </div>
     </div>
   </div>

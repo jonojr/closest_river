@@ -2,6 +2,7 @@ from django.urls import path
 from django.views.defaults import page_not_found
 
 from closest_river.rivers.api.views import ClosestRiver
+from closest_river.rivers.api.views import RiverElevation
 from closest_river.rivers.api.views import RiverGeo
 from closest_river.rivers.api.views import RiverSectionPopupInfo
 from closest_river.rivers.views import RiverDetailView
@@ -46,5 +47,10 @@ urlpatterns = [
         "geometry/<int:osm_id>/",
         RiverGeo.as_view(),
         name="river_geo",
+    ),
+    path(
+        "<int:osm_id>/elevation_data/",
+        RiverElevation.as_view(),
+        name="river_elevation",
     ),
 ]

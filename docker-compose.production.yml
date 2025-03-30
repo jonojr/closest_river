@@ -26,6 +26,7 @@ services:
     build:
       context: .
       dockerfile: ./compose/production/postgres/Dockerfile
+    shm_size: 1gb
     image: closest_river_production_postgres
     volumes:
       - /mnt/Data/closest_river/postgres:/var/lib/postgresql/data

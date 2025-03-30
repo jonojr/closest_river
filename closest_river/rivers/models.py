@@ -6,6 +6,11 @@ from pathlib import Path
 
 import requests
 from django.contrib.gis.db.models import LineStringField
+from django.contrib.gis.db.models.aggregates import Union
+from django.contrib.gis.db.models.functions import Length
+from django.contrib.gis.geos import LineString
+from django.contrib.gis.geos import MultiLineString
+from django.contrib.gis.measure import Distance
 from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.core.files.base import ContentFile
@@ -49,6 +54,60 @@ class River(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.osm_id})" if self.name else str(self.osm_id)
+
+    @property
+    def geometry(self) -> LineString | MultiLineString | None:
+        if self.sections.count() == 0:
+            return None
+
+        aggregate = self.sections.aggregate(Union("geometry"))
+
+        return aggregate["geometry__union"]
+
+    @property
+    def length(self) -> Distance:
+        if self.sections.count() == 0:
+            return Distance()
+
+        return self.sections.aggregate(total_length=Length(Union("geometry")))[
+            "total_length"
+        ]
+
+    @property
+    def elevations(self):
+        steps_per_km = 0.33
+
+        geometry = self.geometry
+
+        if isinstance(geometry, MultiLineString):
+            geometry = sorted(geometry, key=lambda x: x.length, reverse=True)[0]
+
+        length_in_km = round(self.length.km)
+
+        number_of_steps = int(max(length_in_km * steps_per_km, 30))
+
+        points_to_check = [
+            geometry.interpolate_normalized(step / number_of_steps)
+            for step in range(number_of_steps + 1)
+        ]
+
+        request_data = {
+            "locations": [
+                {"latitude": point.coords[1], "longitude": point.coords[0]}
+                for point in points_to_check
+            ],
+        }
+
+        request = requests.post(
+            url="http://10.0.0.253:5002/api/v1/lookup",
+            json=request_data,
+            timeout=30,
+        )
+
+        result = []
+        for index, point in enumerate(request.json()["results"]):
+            result.append([index / number_of_steps * length_in_km, point["elevation"]])
+        return result
 
 
 class FetchingOSMDataError(Exception):
