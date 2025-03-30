@@ -13,6 +13,10 @@ module.exports = {
       __dirname,
       '../closest_river/static/js/riverDetailMap',
     ),
+    riverDetailElevationChart: path.resolve(
+      __dirname,
+      '../closest_river/static/js/riverDetailElevationChart',
+    ),
   },
   output: {
     path: path.resolve(__dirname, '../closest_river/static/webpack_bundles/'),
