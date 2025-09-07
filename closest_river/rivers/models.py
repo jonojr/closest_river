@@ -6,8 +6,9 @@ from pathlib import Path
 
 import requests
 from django.contrib.gis.db.models import LineStringField
-from django.contrib.gis.db.models.aggregates import Union
+from django.contrib.gis.db.models.aggregates import Collect
 from django.contrib.gis.db.models.functions import Length
+from django.contrib.gis.geos import GEOSGeometry
 from django.contrib.gis.geos import LineString
 from django.contrib.gis.geos import MultiLineString
 from django.contrib.gis.measure import Distance
@@ -15,6 +16,7 @@ from django.contrib.postgres.fields import ArrayField
 from django.contrib.postgres.indexes import GinIndex
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.db import connection
 from django.db import models
 
 logger = logging.getLogger(__name__)
@@ -60,16 +62,25 @@ class River(models.Model):
         if self.sections.count() == 0:
             return None
 
-        aggregate = self.sections.aggregate(Union("geometry"))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ST_LineMerge(ST_Union(geometry))
+                FROM rivers_riversection
+                WHERE river_id = %s
+            """,
+                [self.id],
+            )
+            combined_geometry = cursor.fetchone()[0]
 
-        return aggregate["geometry__union"]
+            return GEOSGeometry(combined_geometry) if combined_geometry else None
 
     @property
     def length(self) -> Distance:
         if self.sections.count() == 0:
             return Distance()
 
-        return self.sections.aggregate(total_length=Length(Union("geometry")))[
+        return self.sections.aggregate(total_length=Length(Collect("geometry")))[
             "total_length"
         ]
 
