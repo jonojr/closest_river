@@ -24,4 +24,4 @@ django-cors-headers==4.6.0  # https://github.com/adamchainz/django-cors-headers
 drf-spectacular==0.28.0  # https://github.com/tfranzel/drf-spectacular
 django-webpack-loader==3.1.1  # https://github.com/django-webpack/django-webpack-loader
 # Osmium for processing OSM data.
-osmium==4.0.2
+osmium==4.1.1
