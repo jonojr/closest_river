@@ -37,10 +37,13 @@ class ClosestRiver(APIView):
     def get(self, request, lat: str, lon: str):
         user_point = Point(float(lon), float(lat), srid=4326)
 
-        # Only rivers are eligible, not streams — templates/pages/instructions.html
-        # tells users that smaller water-courses are never highlighted as their
-        # closest river.
-        candidates = RiverSection.objects.filter(waterway="river")
+        # By default only rivers are eligible, not streams —
+        # templates/pages/instructions.html tells users that smaller
+        # water-courses are not highlighted as their closest river. The map's
+        # "any waterway" switch opts in to streams with ?waterway=any.
+        candidates = RiverSection.objects.all()
+        if request.query_params.get("waterway") != "any":
+            candidates = candidates.filter(waterway="river")
 
         # Do a rough filter using GeometryDistance & grab the 3 closest river sections.
         river_sections = candidates.annotate(

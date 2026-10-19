@@ -25,6 +25,13 @@
       </button>
       <div class="finder__divider">or</div>
       <div id="geocoder"></div>
+      <div class="form-check form-switch finder__option">
+        <input class="form-check-input"
+               type="checkbox"
+               role="switch"
+               id="any-waterway" />
+        <label class="form-check-label" for="any-waterway">Include creeks &amp; streams</label>
+      </div>
       <p id="status" class="finder__status" role="status"></p>
     </section>
     <section id="river-card"
@@ -35,7 +42,7 @@
               type="button"
               class="btn-close river-card__close"
               aria-label="Close"></button>
-      <p class="river-card__eyebrow">Your closest river</p>
+      <p id="river-card-eyebrow" class="river-card__eyebrow">Your closest river</p>
       <h2 id="river-card-title" class="river-card__name">
         <a id="name"></a>
       </h2>

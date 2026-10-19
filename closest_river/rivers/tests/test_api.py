@@ -15,8 +15,9 @@ pytestmark = pytest.mark.django_db
 LAT, LON = "-37.81", "144.91"
 
 
-def _closest(lat=LAT, lon=LON):
-    return ClosestRiver.as_view()(APIRequestFactory().get("/"), lat=lat, lon=lon)
+def _closest(lat=LAT, lon=LON, **params):
+    request = APIRequestFactory().get("/", params)
+    return ClosestRiver.as_view()(request, lat=lat, lon=lon)
 
 
 def test_returns_the_nearest_river():
@@ -54,6 +55,27 @@ def test_streams_are_never_the_closest_river():
 
     assert response.status_code == 200
     assert response.data["section"]["osm_way_id"] == far_river.osm_way_id
+
+
+def test_any_waterway_lets_a_nearer_stream_win():
+    """The map's "any waterway" switch includes streams in the search."""
+    stream = RiverSectionFactory(
+        osm_way_id=800005,
+        name="Tiny creek",
+        waterway="stream",
+        geometry=LineString((144.9101, -37.8101), (144.9102, -37.8102), srid=4326),
+    )
+    RiverSectionFactory(
+        osm_way_id=800006,
+        name="Big river",
+        waterway="river",
+        geometry=LineString((145.6, -38.4), (145.7, -38.5), srid=4326),
+    )
+
+    response = _closest(waterway="any")
+
+    assert response.status_code == 200
+    assert response.data["section"]["osm_way_id"] == stream.osm_way_id
 
 
 def test_no_data_returns_404_rather_than_a_500():

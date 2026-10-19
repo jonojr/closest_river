@@ -17,6 +17,19 @@
           content="A web-app which displays the closest river to the user with some information" />
     <meta name="author" content="John Roberts" />
     <link rel="icon" href="{% static 'images/favicons/river.png' %}" />
+    {# Set the theme before anything paints; static/js/theme.js handles the toggle. #}
+    <script>
+      (function() {
+        var theme;
+        try {
+          theme = localStorage.getItem('theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-bs-theme', theme);
+      })();
+    </script>
     {% block css %}
       <!-- Your stuff: Third-party CSS libraries go here -->
       <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -41,12 +54,18 @@
   <body class="{% block bodyclass %}{% endblock bodyclass %}">
     {% block body %}
       {% with url_name=request.resolver_match.url_name %}
-        <nav class="navbar navbar-expand-md bg-white border-bottom site-nav">
+        <nav class="navbar navbar-expand-md bg-body border-bottom site-nav">
           <div class="container-fluid px-3">
             <a class="navbar-brand" href="{% url 'home' %}">
               <img src="{% static 'images/favicons/river.png' %}" alt="" />
               My closest river
             </a>
+            <button id="theme-toggle"
+                    class="btn theme-toggle ms-auto order-md-last"
+                    type="button"
+                    aria-label="Switch to dark mode">
+              <i class="bi bi-moon-stars"></i>
+            </button>
             <button class="navbar-toggler border-0"
                     type="button"
                     data-bs-toggle="collapse"

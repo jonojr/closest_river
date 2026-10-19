@@ -54,20 +54,40 @@ const FLOW_DASH_STEPS = [
 
 // Animate a dashed line layer so the dashes drift downstream. Falls back to a
 // static dash for people who have asked for reduced motion.
+//
+// Returns { start, stop }: stop it while nothing is selected so the map isn't
+// repainting continuously while it sits idle. Safe to leave running across a
+// style change; steps are skipped while the layer doesn't exist.
 export function animateFlow(map, layerId, { stepMs = 60 } = {}) {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let step = 0;
   let last = 0;
+  let frameId = null;
 
   function frame(timestamp) {
-    if (!reducedMotion.matches && timestamp - last >= stepMs) {
+    if (
+      !reducedMotion.matches &&
+      timestamp - last >= stepMs &&
+      map.getLayer(layerId)
+    ) {
       last = timestamp;
       step = (step + 1) % FLOW_DASH_STEPS.length;
       map.setPaintProperty(layerId, 'line-dasharray', FLOW_DASH_STEPS[step]);
     }
-    requestAnimationFrame(frame);
+    frameId = requestAnimationFrame(frame);
   }
 
-  map.setPaintProperty(layerId, 'line-dasharray', FLOW_DASH_STEPS[0]);
-  requestAnimationFrame(frame);
+  return {
+    start() {
+      if (frameId === null) {
+        frameId = requestAnimationFrame(frame);
+      }
+    },
+    stop() {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+    },
+  };
 }
