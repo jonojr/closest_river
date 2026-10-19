@@ -318,6 +318,25 @@ body.app-layout {
   }
 }
 
+// River detail page: name, facts and tags over the map.
+.river-panel {
+  top: $panel-gutter;
+  max-height: calc(100% - #{$panel-gutter * 2 + 20px});
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  &__name {
+    margin-bottom: 0.875rem;
+    font-size: 1.5rem;
+    letter-spacing: -0.015em;
+  }
+
+  &__tags {
+    margin-top: 0.875rem;
+    font-size: 0.8125rem;
+  }
+}
+
 // Phones: the finder collapses to a search bar across the top (leaving room
 // for the zoom controls) and the result card becomes a bottom sheet.
 @include media-breakpoint-down(md) {
@@ -342,6 +361,18 @@ body.app-layout {
   .river-card {
     right: $panel-gutter;
     padding: 1rem;
+  }
+
+  // The river panel becomes a bottom sheet, clear of the attribution line.
+  .river-panel {
+    top: auto;
+    right: $panel-gutter;
+    bottom: $panel-gutter + 20px;
+    max-height: 45%;
+
+    &__name {
+      font-size: 1.25rem;
+    }
   }
 }
 

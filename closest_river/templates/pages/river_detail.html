@@ -3,65 +3,81 @@
 {% load static i18n %}
 {% load render_bundle from webpack_loader %}
 
+{% block title %}
+  {{ river.name|default:"Unnamed river" }} · My closest river
+{% endblock title %}
 {% block css %}
   {{ block.super }}
-  {% render_bundle 'mainMap' 'css' %}
+  {% render_bundle 'riverDetailMap' 'css' %}
 {% endblock css %}
 {% block javascript %}
   {{ block.super }}
   {% render_bundle 'riverDetailMap' 'js' attrs='defer' %}
 {% endblock javascript %}
+{% block bodyclass %}
+  app-layout
+{% endblock bodyclass %}
 {% block content %}
-  <div class="container">
-    <h1>{{ river.name }}</h1>
-    <div class="row">
-      <div class="col-lg-8">
-        <div id="map" class="map-height"></div>
-      </div>
-      <div class="col-4">
-        <div class="row">
-          <div class="col">Destination:</div>
-          <div class="col">{{ river.destination }}</div>
-        </div>
+  <div class="map-shell">
+    <div id="map" data-osm-id="{{ river.osm_id }}"></div>
+    <section class="map-panel river-panel" aria-labelledby="river-title">
+      <p class="river-card__eyebrow">River</p>
+      <h1 id="river-title" class="river-panel__name">{{ river.name|default:"Unnamed river" }}</h1>
+      <dl class="river-card__facts">
+        {% if river.destination %}
+          <div class="river-card__wide">
+            <dt>Flows into</dt>
+            <dd>
+              {{ river.destination }}
+            </dd>
+          </div>
+        {% endif %}
         {% if river.wikipedia %}
-          <div class="row">
-            <div class="col">Wikipedia:</div>
-            <div class="col">
+          <div>
+            <dt>Wikipedia</dt>
+            <dd>
               <a href="https://en.wikipedia.org/wiki/{{ river.wikipedia }}"
-                 target="_blank">{{ river.wikipedia }}</a>
-            </div>
+                 target="_blank"
+                 rel="noopener">{{ river.wikipedia }}</a>
+            </dd>
           </div>
         {% endif %}
         {% if river.tags.wikidata %}
-          <div class="row">
-            <div class="col">Wikidata:</div>
-            <div class="col">
+          <div>
+            <dt>Wikidata</dt>
+            <dd>
               <a href="https://www.wikidata.org/wiki/{{ river.tags.wikidata }}"
-                 target="_blank">{{ river.tags.wikidata }}</a>
-            </div>
+                 target="_blank"
+                 rel="noopener">{{ river.tags.wikidata }}</a>
+            </dd>
           </div>
         {% endif %}
-        <div class="row">
-          <div class="col">OSM ID:</div>
-          <a class="col"
-             id="osm_id"
-             href="https://www.openstreetmap.org/relation/{{ river.osm_id }}/">{{ river.osm_id }}</a>
+        <div>
+          <dt>OpenStreetMap</dt>
+          <dd>
+            <a href="https://www.openstreetmap.org/relation/{{ river.osm_id }}/"
+               target="_blank"
+               rel="noopener">Relation {{ river.osm_id }}</a>
+          </dd>
         </div>
-        <div class="row">
-          <div class="col">Tags:</div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <ul>
-              {% for key, value in river.tags.items %}<li>{{ key }}: {{ value }}</li>{% endfor %}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
+      </dl>
+      {% if river.tags %}
+        <details class="popup-more river-panel__tags">
+          <summary>All OSM tags ({{ river.tags|length }})</summary>
+          <dl class="popup-table">
+            {% for key, value in river.tags.items %}
+              <dt>{{ key }}</dt>
+              <dd>
+                {{ value }}
+              </dd>
+            {% endfor %}
+          </dl>
+        </details>
+      {% endif %}
+      <a class="btn btn-outline-primary btn-sm w-100 mt-3"
+         href="{% url 'home' %}">
+        <i class="bi bi-arrow-left me-1"></i>Find your closest river
+      </a>
+    </section>
   </div>
-  <img id="arrow"
-       style="visibility:hidden"
-       src="{% static 'images/caret-right-fill.svg' %}"
-       alt="River direction arrow" />
 {% endblock content %}
