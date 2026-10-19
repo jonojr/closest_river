@@ -78,6 +78,18 @@ def test_any_waterway_lets_a_nearer_stream_win():
     assert response.data["section"]["osm_way_id"] == stream.osm_way_id
 
 
+def test_reports_whether_the_nearest_stretch_is_intermittent():
+    RiverSectionFactory(
+        osm_way_id=800007,
+        tags={"waterway": "river", "intermittent": "yes"},
+    )
+
+    response = _closest()
+
+    assert response.status_code == 200
+    assert response.data["intermittent"] is True
+
+
 def test_no_data_returns_404_rather_than_a_500():
     """Previously this dereferenced None and raised AttributeError."""
     response = _closest()

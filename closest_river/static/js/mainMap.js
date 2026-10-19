@@ -138,6 +138,8 @@ function mapPosition(latitude, longitude) {
         `https://en.wikipedia.org/wiki/${feature?.wikipedia}`,
       );
       setField(distance, `${data.distance} km`);
+      document.querySelector('#river-card-intermittent').hidden =
+        !data.intermittent;
 
       distanceToClosestRiver = data.distance;
       status.textContent = '';

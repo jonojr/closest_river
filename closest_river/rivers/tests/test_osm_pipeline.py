@@ -208,6 +208,13 @@ def test_the_tile_table_carries_streams_as_well_as_rivers(imported):
     assert rows == {100: "river", 101: "stream", 102: "river", 104: "river"}
 
 
+def test_the_tile_table_flags_intermittent_waterways(imported):
+    """intermittent=yes and seasonal=* both count; untagged ways do not."""
+    rows = dict(_query("SELECT osm_way_id, intermittent FROM {s}.waterway_tile"))
+
+    assert rows == {100: False, 101: True, 102: True, 104: False}
+
+
 def test_tile_geometry_is_in_web_mercator(imported):
     srid = _scalar("SELECT ST_SRID(geometry) FROM {s}.waterway_tile LIMIT 1")
     assert srid == 3857, "tile expiry only works on Web Mercator columns"

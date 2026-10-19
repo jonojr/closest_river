@@ -77,6 +77,9 @@ class ClosestRiver(APIView):
                 "river": river_serializer.data,
                 "section": section_serializer.data,
                 "distance": round(river_section.distance.km, 2),
+                # The nearest stretch, not the river as a whole: what matters
+                # is whether the water closest to you is often dry.
+                "intermittent": river_section.intermittent,
                 "closest_point_on_river": river_section.closest_point.coords,
                 "geometry": geometry,
             },

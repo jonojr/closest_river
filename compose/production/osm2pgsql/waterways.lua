@@ -63,6 +63,16 @@ local ROLE_PRIORITY = {
 -- almost nothing.
 local MAX_CACHED_ZOOM = 10
 
+-- Watercourses that are dry for part of the year: intermittent=yes, or a
+-- seasonal=* value saying when they flow. Most of inland Australia's network is
+-- tagged this way, and the map draws it fainter than permanent water. Mirrors
+-- is_intermittent() in rivers/models.py; keep them in step.
+local SEASONAL_VALUES = { yes = true, wet_season = true, wet = true }
+
+local function is_intermittent(tags)
+    return tags.intermittent == 'yes' or SEASONAL_VALUES[tags.seasonal] == true
+end
+
 local tables = {}
 
 -- Tile expiry.
@@ -151,6 +161,9 @@ tables.tile = osm2pgsql.define_table({
     ids = { type = 'way', id_column = 'osm_way_id', create_index = 'primary_key' },
     columns = {
         { column = 'waterway', type = 'text', not_null = true },
+        -- See is_intermittent(). Lives here as a column because the cached
+        -- zooms must never read waterway_section, where the tags are.
+        { column = 'intermittent', type = 'bool', not_null = true },
         {
             column = 'geometry',
             type = 'linestring',
@@ -279,6 +292,7 @@ function osm2pgsql.process_way(object)
 
     tables.tile:insert({
         waterway = waterway,
+        intermittent = is_intermittent(object.tags),
         geometry = geom:transform(3857):simplify(TILE_SIMPLIFY_TOLERANCE),
     })
 end

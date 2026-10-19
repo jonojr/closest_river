@@ -316,6 +316,24 @@ body.app-layout {
   &__wide {
     grid-column: 1 / -1;
   }
+
+  // Shared with the river page's panel.
+  &__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: -0.375rem 0 0.875rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border-radius: 999px;
+
+    &[hidden] {
+      display: none;
+    }
+  }
 }
 
 // River detail page: name, facts and tags over the map.

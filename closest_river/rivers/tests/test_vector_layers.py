@@ -25,10 +25,18 @@ SEED_X, SEED_Y = 16132000, -4554000
 SEED_LENGTH_M = 600_000
 
 
-def _tile_row(osm_way_id, waterway, offset=0, length=SEED_LENGTH_M):
+def _tile_row(
+    osm_way_id,
+    waterway,
+    offset=0,
+    length=SEED_LENGTH_M,
+    *,
+    intermittent=False,
+):
     return WaterwayTile.objects.create(
         osm_way_id=osm_way_id,
         waterway=waterway,
+        intermittent=intermittent,
         geometry=LineString(
             (SEED_X + offset, SEED_Y),
             (SEED_X + offset + length, SEED_Y - length),
@@ -190,3 +198,44 @@ def test_empty_area_renders_an_empty_tile():
     tile = mercantile.tile(-140.0, 0.0, 6)
 
     assert layer.get_tile(tile.x, tile.y, tile.z) == b""
+
+
+def test_merged_streams_stay_split_by_intermittent():
+    """Merging must not mix permanent and intermittent water into one
+    feature, or the map can no longer draw them differently."""
+    assert "GROUP BY intermittent" in StreamSectionVectorLayer()._cached_zoom_sql()
+
+
+@pytest.mark.parametrize(
+    "layer_class",
+    [RiverSectionVectorLayer, StreamSectionVectorLayer],
+)
+def test_every_zoom_carries_the_intermittent_flag(layer_class):
+    layer = layer_class()
+
+    # Cached zooms use the precomputed column; they must not read the tags,
+    # which live in waterway_section.
+    assert "intermittent" in layer._cached_zoom_sql()
+    assert "tags" not in layer._cached_zoom_sql()
+    assert "intermittent" in layer._full_detail_sql()
+
+
+@pytest.mark.parametrize("zoom", [6, 12])
+def test_intermittent_reaches_the_rendered_tile(zoom):
+    _tile_row(1, "stream", intermittent=True)
+    RiverSectionFactory(
+        osm_way_id=800010,
+        waterway="stream",
+        tags={"waterway": "stream", "intermittent": "yes"},
+        geometry=LineString(
+            (SEED_LON, SEED_LAT),
+            (SEED_LON + 0.01, SEED_LAT - 0.01),
+            srid=4326,
+        ),
+    )
+    tile = mercantile.tile(SEED_LON, SEED_LAT, zoom)
+
+    rendered = StreamSectionVectorLayer().get_tile(tile.x, tile.y, zoom)
+
+    # MVT stores property names verbatim in the layer's key table.
+    assert b"intermittent" in rendered

@@ -64,6 +64,13 @@ COARSE_SNAP_BELOW_ZOOM = 4
 TILE_EXTENT = 4096
 TILE_BUFFER = 256
 
+# models.is_intermittent() as SQL, for the uncached zooms, which read the tags
+# directly. The cached zooms use the precomputed waterway_tile.intermittent.
+INTERMITTENT_FROM_TAGS_SQL = (
+    "COALESCE(tags->>'intermittent' = 'yes' "
+    "OR tags->>'seasonal' IN ('yes', 'wet_season', 'wet'), false)"
+)
+
 
 def css_pixel_size_metres(zoom: int) -> float:
     """Width of one CSS pixel at this zoom, in Web Mercator metres."""
@@ -105,21 +112,27 @@ class WaterwayVectorLayer(VectorLayer):
         snapped = "ST_RemoveRepeatedPoints(ST_SnapToGrid(geometry, %(px)s), %(px)s)"
 
         if self.merge_when_cached:
+            # One merged feature per tile for permanent water and one for
+            # intermittent, so the map can still draw them differently.
             projection = (
+                "intermittent, "
                 f"ST_AsMVTGeom(ST_LineMerge(ST_Collect({snapped})), {envelope}, "
                 f"{TILE_EXTENT}, {TILE_BUFFER}, true) AS geom"
             )
+            group_by = "GROUP BY intermittent"
         else:
             projection = (
-                f"osm_way_id, ST_AsMVTGeom({snapped}, {envelope}, "
+                f"osm_way_id, intermittent, ST_AsMVTGeom({snapped}, {envelope}, "
                 f"{TILE_EXTENT}, {TILE_BUFFER}, true) AS geom"
             )
+            group_by = ""
 
         return f"""
             SELECT ST_AsMVT(q, %(layer)s, {TILE_EXTENT}, 'geom') FROM (
                 SELECT {projection}
                 FROM {table}
                 WHERE waterway = %(waterway)s AND geometry && {envelope}
+                {group_by}
             ) q WHERE q.geom IS NOT NULL
         """  # noqa: S608
 
@@ -141,6 +154,7 @@ class WaterwayVectorLayer(VectorLayer):
         return f"""
             SELECT ST_AsMVT(q, %(layer)s, {TILE_EXTENT}, 'geom') FROM (
                 SELECT osm_way_id,
+                       {INTERMITTENT_FROM_TAGS_SQL} AS intermittent,
                        ST_AsMVTGeom({snapped}, {envelope},
                                     {TILE_EXTENT}, {TILE_BUFFER}, true) AS geom
                 FROM {table}
@@ -209,7 +223,10 @@ class RiverSectionVectorLayer(WaterwayVectorLayer):
     id = "river-sections"
     description = "OSM ways forming a river"
     waterway = "river"
-    layer_fields = {"osm_way_id": "OSM way id, for the popup lookup"}
+    layer_fields = {
+        "osm_way_id": "OSM way id, for the popup lookup",
+        "intermittent": "Dry for part of the year",
+    }
     merge_when_cached = False
 
 
@@ -225,5 +242,8 @@ class StreamSectionVectorLayer(WaterwayVectorLayer):
     id = "stream-sections"
     description = "OSM ways forming a stream"
     waterway = "stream"
-    layer_fields = {"osm_way_id": "OSM way id; absent at cached zooms, when merged"}
+    layer_fields = {
+        "osm_way_id": "OSM way id; absent at cached zooms, when merged",
+        "intermittent": "Dry for part of the year",
+    }
     merge_when_cached = True

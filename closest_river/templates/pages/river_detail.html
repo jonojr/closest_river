@@ -23,6 +23,12 @@
     <section class="map-panel river-panel" aria-labelledby="river-title">
       <p class="river-card__eyebrow">River</p>
       <h1 id="river-title" class="river-panel__name">{{ river.name|default:"Unnamed river" }}</h1>
+      {% if river.is_mostly_intermittent %}
+        <p class="river-card__badge">
+          <i class="bi bi-droplet-half" aria-hidden="true"></i>
+          Intermittent: often dry, flows after rain
+        </p>
+      {% endif %}
       <dl class="river-card__facts">
         {% if river.destination %}
           <div class="river-card__wide">

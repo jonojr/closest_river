@@ -139,13 +139,22 @@ export class MapLayersControl {
     }
   }
 
+  // A layer can belong to several groups (intermittent streams are both
+  // streams and intermittent); it shows only while every one of them is on.
   _apply() {
+    const visible = {};
     for (const group of this._groups) {
-      const visibility = this._visible[group.key] ? 'visible' : 'none';
       for (const layer of group.layers) {
-        if (this._map.getLayer(layer)) {
-          this._map.setLayoutProperty(layer, 'visibility', visibility);
-        }
+        visible[layer] = (visible[layer] ?? true) && this._visible[group.key];
+      }
+    }
+    for (const [layer, show] of Object.entries(visible)) {
+      if (this._map.getLayer(layer)) {
+        this._map.setLayoutProperty(
+          layer,
+          'visibility',
+          show ? 'visible' : 'none',
+        );
       }
     }
   }

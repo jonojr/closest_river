@@ -46,6 +46,7 @@ const PALETTES = {
   light: {
     river: '#1d5fc4',
     stream: '#6fa6e4',
+    intermittent: '#8aa2bf',
     selectedRiver: '#0a3a82',
     selectedRiverCasing: '#ffffff',
     riverFlow: '#cfe3fb',
@@ -57,6 +58,7 @@ const PALETTES = {
   dark: {
     river: '#5aa9ff',
     stream: '#3b6aa3',
+    intermittent: '#5b7290',
     selectedRiver: '#9fd2ff',
     selectedRiverCasing: '#0b1220',
     riverFlow: '#1b3d6b',
@@ -68,6 +70,33 @@ const PALETTES = {
 };
 
 export const EMPTY = { type: 'FeatureCollection', features: [] };
+
+// Waterways that are dry for part of the year, drawn paler, dashed and without
+// animated flow. Most of inland Australia is like this, and drawing it as
+// permanent water is misleading. The tiles carry a precomputed flag; the
+// highlighted river's GeoJSON has the raw tags, so it is tested the same way
+// rivers/models.py:is_intermittent() does.
+const INTERMITTENT = ['to-boolean', ['get', 'intermittent']];
+const PERENNIAL = ['!', INTERMITTENT];
+const INTERMITTENT_TAGS = [
+  'any',
+  ['==', ['get', 'intermittent', ['get', 'tags']], 'yes'],
+  [
+    'in',
+    ['get', 'seasonal', ['get', 'tags']],
+    ['literal', ['yes', 'wet_season', 'wet']],
+  ],
+];
+
+// Solid when zoomed out, where dashes on a hairline just look broken; dashed
+// once lines are wide enough for the pattern to read.
+const INTERMITTENT_DASH = [
+  'step',
+  ['zoom'],
+  ['literal', [1, 0]],
+  9,
+  ['literal', [3, 2]],
+];
 
 // Gentler and slower than the highlighted river, with a stretched dash so it
 // reads as a drift rather than a shimmer on the thinner lines.
@@ -247,6 +276,11 @@ export function createRiverMap({
         fill: colours.river,
         outline: colours.arrowOutline,
       }),
+      'intermittent-arrow': chevronImage({
+        size: 11,
+        fill: colours.intermittent,
+        outline: colours.arrowOutline,
+      }),
       'stream-arrow': chevronImage({
         size: 10,
         fill: colours.stream,
@@ -273,12 +307,46 @@ export function createRiverMap({
     // weight turns into a solid block of colour. Kept subordinate it reads as
     // texture with the rivers standing out, but is still easy to follow once
     // zoomed in.
+    const streamWidth = zoomRamp([
+      [4, 0.6],
+      [9, 1],
+      [12, 1.5],
+      [14, 2],
+    ]);
+    map.addLayer(
+      {
+        id: 'stream-sections-intermittent',
+        type: 'line',
+        source: 'river-sections-data',
+        'source-layer': 'stream-sections',
+        filter: INTERMITTENT,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': colours.intermittent,
+          'line-opacity': zoomRamp(
+            [
+              [4, 0.25],
+              [8, 0.35],
+              [11, 0.55],
+              [14, 0.7],
+            ],
+            networkOpacity,
+          ),
+          'line-width': streamWidth,
+        },
+      },
+      firstSymbolId,
+    );
     map.addLayer(
       {
         id: 'stream-sections',
         type: 'line',
         source: 'river-sections-data',
         'source-layer': 'stream-sections',
+        filter: PERENNIAL,
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
@@ -295,12 +363,7 @@ export function createRiverMap({
             networkOpacity,
           ),
           // Hairline when zoomed out, approaching the river weight as you zoom in.
-          'line-width': zoomRamp([
-            [4, 0.6],
-            [9, 1],
-            [12, 1.5],
-            [14, 2],
-          ]),
+          'line-width': streamWidth,
         },
       },
       firstSymbolId,
@@ -311,6 +374,7 @@ export function createRiverMap({
         type: 'symbol',
         source: 'river-sections-data',
         'source-layer': 'stream-sections',
+        filter: PERENNIAL,
         minzoom: 13,
         layout: {
           'symbol-placement': 'line',
@@ -325,10 +389,35 @@ export function createRiverMap({
     );
     map.addLayer(
       {
+        id: 'river-sections-intermittent',
+        type: 'line',
+        source: 'river-sections-data',
+        'source-layer': 'river-sections',
+        filter: INTERMITTENT,
+        layout: {
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': colours.intermittent,
+          'line-opacity': 0.9 * networkOpacity,
+          'line-width': zoomRamp([
+            [4, 0.8],
+            [9, 1.6],
+            [12, 2.2],
+            [14, 2.6],
+          ]),
+          'line-dasharray': INTERMITTENT_DASH,
+        },
+      },
+      firstSymbolId,
+    );
+    map.addLayer(
+      {
         id: 'river-sections',
         type: 'line',
         source: 'river-sections-data',
         'source-layer': 'river-sections',
+        filter: PERENNIAL,
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
@@ -355,6 +444,8 @@ export function createRiverMap({
         type: 'line',
         source: 'river-sections-data',
         'source-layer': 'river-sections',
+        // Water moving along a channel that is usually dry would mislead.
+        filter: PERENNIAL,
         minzoom: 9,
         layout: {
           'line-join': 'round',
@@ -371,26 +462,33 @@ export function createRiverMap({
       },
       firstSymbolId,
     );
-    map.addLayer(
-      {
-        id: 'river-section-arrows',
-        type: 'symbol',
-        source: 'river-sections-data',
-        'source-layer': 'river-sections',
-        // Below this the arrows are too small to read and just thicken the
-        // network into noise.
-        minzoom: 10,
-        layout: {
-          'symbol-placement': 'line',
-          'symbol-spacing': 120,
-          'icon-image': 'network-arrow',
+    // Arrows, separately for each class so hiding intermittent waterways
+    // hides their arrows too. Below zoom 10 the arrows are too small to read
+    // and just thicken the network into noise.
+    for (const [id, filter, image] of [
+      ['river-section-arrows', PERENNIAL, 'network-arrow'],
+      ['river-section-arrows-intermittent', INTERMITTENT, 'intermittent-arrow'],
+    ]) {
+      map.addLayer(
+        {
+          id,
+          type: 'symbol',
+          source: 'river-sections-data',
+          'source-layer': 'river-sections',
+          filter,
+          minzoom: 10,
+          layout: {
+            'symbol-placement': 'line',
+            'symbol-spacing': 120,
+            'icon-image': image,
+          },
+          paint: {
+            'icon-opacity': networkOpacity,
+          },
         },
-        paint: {
-          'icon-opacity': networkOpacity,
-        },
-      },
-      firstSymbolId,
-    );
+        firstSymbolId,
+      );
+    }
 
     map.addSource('river', { type: 'geojson', data: river });
     map.addLayer(
@@ -415,6 +513,7 @@ export function createRiverMap({
         id: 'river',
         type: 'line',
         source: 'river',
+        filter: ['!', INTERMITTENT_TAGS],
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
@@ -426,6 +525,24 @@ export function createRiverMap({
       },
       firstSymbolId,
     );
+    // Stretches that are often dry: same weight, dashed over the casing.
+    map.addLayer(
+      {
+        id: 'river-intermittent',
+        type: 'line',
+        source: 'river',
+        filter: INTERMITTENT_TAGS,
+        layout: {
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': colours.selectedRiver,
+          'line-width': 5,
+          'line-dasharray': [1.6, 1],
+        },
+      },
+      firstSymbolId,
+    );
     // Dashes that drift downstream along the highlighted river (see
     // animateFlow).
     map.addLayer(
@@ -433,6 +550,7 @@ export function createRiverMap({
         id: 'river-flow',
         type: 'line',
         source: 'river',
+        filter: ['!', INTERMITTENT_TAGS],
         layout: {
           'line-join': 'round',
         },
@@ -491,8 +609,11 @@ export function createRiverMap({
     ...Object.keys(extraPopups),
     'arrows',
     'river',
+    'river-intermittent',
     'river-sections',
+    'river-sections-intermittent',
     'stream-sections',
+    'stream-sections-intermittent',
   ];
 
   let popupRequest = 0;
@@ -577,7 +698,20 @@ export function createRiverMap({
         {
           key: 'streams',
           label: 'Creeks & streams',
-          layers: ['stream-sections', 'stream-section-arrows'],
+          layers: [
+            'stream-sections',
+            'stream-section-arrows',
+            'stream-sections-intermittent',
+          ],
+        },
+        {
+          key: 'intermittent',
+          label: 'Intermittent waterways',
+          layers: [
+            'river-sections-intermittent',
+            'river-section-arrows-intermittent',
+            'stream-sections-intermittent',
+          ],
         },
         {
           key: 'flow',
