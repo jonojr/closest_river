@@ -8,12 +8,38 @@ import '@mapbox-controls/ruler/src/index.css';
 import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
 import { animateFlow, chevronImage } from './flowDirection';
-import { LayerToggleControl } from './LayerToggleControl';
+import { MapLayersControl } from './MapLayersControl';
 
+// Background maps, as MapTiler style ids for each theme. tone says which
+// river palette reads against the map; it follows the theme unless the map
+// is the same either way.
 const BASEMAPS = {
-  light: `https://api.maptiler.com/maps/dataviz/style.json?key=${process.env.MAPTILER_API_KEY}`,
-  dark: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${process.env.MAPTILER_API_KEY}`,
+  minimal: { label: 'Minimal', light: 'dataviz', dark: 'dataviz-dark' },
+  streets: { label: 'Streets', light: 'streets-v2', dark: 'streets-v2-dark' },
+  terrain: { label: 'Terrain', light: 'outdoor-v2', dark: 'outdoor-v2-dark' },
+  // Imagery is dark whichever theme is on, so draw rivers in the dark palette.
+  satellite: {
+    label: 'Satellite',
+    light: 'hybrid',
+    dark: 'hybrid',
+    tone: 'dark',
+  },
 };
+const DEFAULT_BASEMAP = 'minimal';
+const BASEMAP_STORAGE_KEY = 'basemap';
+
+function styleUrl(styleId) {
+  return `https://api.maptiler.com/maps/${styleId}/style.json?key=${process.env.MAPTILER_API_KEY}`;
+}
+
+function storedBasemap() {
+  try {
+    const key = localStorage.getItem(BASEMAP_STORAGE_KEY);
+    return key in BASEMAPS ? key : DEFAULT_BASEMAP;
+  } catch {
+    return DEFAULT_BASEMAP;
+  }
+}
 
 // Keep waterway blues in step with $primary in custom_bootstrap_vars.scss.
 const PALETTES = {
@@ -176,9 +202,13 @@ export function createRiverMap({
   addExtraLayers = () => {},
   extraPopups = {},
 } = {}) {
+  let basemap = storedBasemap();
+  const basemapStyle = () => styleUrl(BASEMAPS[basemap][currentTheme()]);
+  const palette = () => PALETTES[BASEMAPS[basemap].tone ?? currentTheme()];
+
   const map = new maplibregl.Map({
     container,
-    style: BASEMAPS[currentTheme()],
+    style: basemapStyle(),
     center: [135.0951931, -26.3911232],
     zoom: 3, // starting zoom
   });
@@ -198,12 +228,18 @@ export function createRiverMap({
   // Everything we draw on top of the basemap. Runs on every style load: the
   // first one, and again whenever the theme changes the basemap.
   function addRiverLayers() {
-    const colours = PALETTES[currentTheme()];
+    const colours = palette();
 
-    // Insert our layers below the first label layer so place names stay on top.
-    const firstSymbolId = map
-      .getStyle()
-      .layers.find((layer) => layer.type === 'symbol')?.id;
+    // Insert our layers below the labels so place names stay on top. That's
+    // the run of symbol layers at the end of the style, not simply the first
+    // symbol layer: Terrain (outdoor-v2) has contour labels early on, under
+    // its water and land fills, which would bury the rivers.
+    const layers = map.getStyle().layers;
+    let labelsStart = layers.length;
+    while (labelsStart > 0 && layers[labelsStart - 1].type === 'symbol') {
+      labelsStart -= 1;
+    }
+    const firstSymbolId = layers[labelsStart]?.id;
 
     const arrows = {
       'network-arrow': chevronImage({
@@ -427,11 +463,23 @@ export function createRiverMap({
 
   map.on('style.load', addRiverLayers);
 
-  document.addEventListener('themechange', (event) => {
-    // diff: false forces a clean reload so 'style.load' fires and our layers
-    // are rebuilt in the new palette.
-    map.setStyle(BASEMAPS[event.detail.theme], { diff: false });
-  });
+  // diff: false forces a clean reload so 'style.load' fires and our layers
+  // are rebuilt in the palette for the new map.
+  function reloadBasemap() {
+    map.setStyle(basemapStyle(), { diff: false });
+  }
+
+  document.addEventListener('themechange', reloadBasemap);
+
+  function selectBasemap(key) {
+    basemap = key;
+    try {
+      localStorage.setItem(BASEMAP_STORAGE_KEY, key);
+    } catch {
+      // Storage blocked: the choice just won't persist.
+    }
+    reloadBasemap();
+  }
 
   // One popup at a time: clicking elsewhere moves it rather than stacking a
   // new one on top.
@@ -516,18 +564,28 @@ export function createRiverMap({
   // Rivers always stay on; the stream network can be hidden to declutter.
   // Added after the 'style.load' handler above so it finds the layers built.
   map.addControl(
-    new LayerToggleControl([
-      {
-        key: 'streams',
-        label: 'Creeks & streams',
-        layers: ['stream-sections', 'stream-section-arrows'],
+    new MapLayersControl({
+      basemaps: {
+        options: Object.entries(BASEMAPS).map(([key, { label }]) => ({
+          key,
+          label,
+        })),
+        selected: basemap,
+        onSelect: selectBasemap,
       },
-      {
-        key: 'flow',
-        label: 'Animate river flow',
-        layers: ['river-section-flow'],
-      },
-    ]),
+      groups: [
+        {
+          key: 'streams',
+          label: 'Creeks & streams',
+          layers: ['stream-sections', 'stream-section-arrows'],
+        },
+        {
+          key: 'flow',
+          label: 'Animate river flow',
+          layers: ['river-section-flow'],
+        },
+      ],
+    }),
     'top-right',
   );
 

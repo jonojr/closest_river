@@ -1,12 +1,16 @@
-// Map control for switching groups of layers on and off.
+// Map control for choosing the background map and switching groups of layers
+// on and off.
 //
+// basemaps: { options: [{ key, label }], selected, onSelect(key) }. The
+//   control only reports the choice; the map owns swapping the style.
 // groups: [{ key, label, layers: [layerId, ...] }]. Each group's choice is
-// remembered in localStorage and re-applied whenever the style reloads (the
-// theme toggle swaps the basemap, which rebuilds every layer). Add this
-// control after registering the 'style.load' handler that creates the layers,
-// so it runs second and finds them in place.
-export class LayerToggleControl {
-  constructor(groups) {
+//   remembered in localStorage and re-applied whenever the style reloads (a
+//   basemap or theme change rebuilds every layer). Add this control after
+//   registering the 'style.load' handler that creates the layers, so it runs
+//   second and finds them in place.
+export class MapLayersControl {
+  constructor({ basemaps, groups }) {
+    this._basemaps = basemaps;
     this._groups = groups;
     this._visible = {};
     for (const group of groups) {
@@ -35,9 +39,13 @@ export class LayerToggleControl {
     this._panel = document.createElement('div');
     this._panel.className = 'layer-control__panel';
     this._panel.hidden = true;
-    for (const group of this._groups) {
-      this._panel.appendChild(this._switch(group));
-    }
+    this._panel.append(
+      this._section('Background', this._basemapChoices()),
+      this._section(
+        'Layers',
+        this._groups.map((group) => this._switch(group)),
+      ),
+    );
 
     this._container.append(this._button, this._panel);
     this._container.addEventListener('keydown', (event) => {
@@ -56,6 +64,40 @@ export class LayerToggleControl {
     this._map.off('style.load', this._apply);
     this._container.remove();
     this._map = undefined;
+  }
+
+  _section(title, children) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'layer-control__section';
+    const legend = document.createElement('legend');
+    legend.textContent = title;
+    fieldset.append(legend, ...children);
+    return fieldset;
+  }
+
+  _basemapChoices() {
+    const { options, selected, onSelect } = this._basemaps;
+    return options.map(({ key, label }) => {
+      const id = `basemap-${key}`;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-check';
+
+      const input = document.createElement('input');
+      input.className = 'form-check-input';
+      input.type = 'radio';
+      input.name = 'basemap';
+      input.id = id;
+      input.checked = key === selected;
+      input.addEventListener('change', () => onSelect(key));
+
+      const text = document.createElement('label');
+      text.className = 'form-check-label';
+      text.htmlFor = id;
+      text.textContent = label;
+
+      wrapper.append(input, text);
+      return wrapper;
+    });
   }
 
   _switch(group) {
