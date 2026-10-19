@@ -5,6 +5,7 @@ import '@mapbox-controls/ruler/src/index.css';
 import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
+import { animateFlow, chevronImage } from './flowDirection';
 
 const map = new maplibregl.Map({
   container: 'map', // container id
@@ -18,6 +19,7 @@ const COLOURS = {
   waterway: '#3b82d6',
   selectedRiver: '#0a3a82',
   selectedRiverCasing: '#ffffff',
+  selectedRiverFlow: '#8ec5ff',
   lineToRiver: '#334155',
   marker: '#0b63c5',
 };
@@ -62,8 +64,18 @@ map.on('load', (e) => {
     }
   }
 
-  const img = document.querySelector('#arrow');
-  map.addImage('arrow', img);
+  const networkArrow = chevronImage({
+    size: 12,
+    fill: COLOURS.waterway,
+    outline: '#ffffff',
+  });
+  map.addImage('network-arrow', networkArrow.image, networkArrow.options);
+  const selectedArrow = chevronImage({
+    size: 18,
+    fill: '#ffffff',
+    outline: COLOURS.selectedRiver,
+  });
+  map.addImage('selected-arrow', selectedArrow.image, selectedArrow.options);
   map.addSource('river-sections-data', {
     type: 'vector',
     url: '/rivers/river-sections/tiles.json',
@@ -136,11 +148,13 @@ map.on('load', (e) => {
       type: 'symbol',
       source: 'river-sections-data',
       'source-layer': 'river-sections',
+      // Below this the arrows are too small to read and just thicken the
+      // network into noise.
+      minzoom: 10,
       layout: {
         'symbol-placement': 'line',
-        'symbol-spacing': 150,
-        'icon-image': 'arrow', // The arrow image
-        'icon-size': 1,
+        'symbol-spacing': 120,
+        'icon-image': 'network-arrow',
       },
     },
     firstSymbolId,
@@ -185,6 +199,23 @@ map.on('load', (e) => {
     },
     firstSymbolId,
   );
+  // Dashes that drift downstream along the selected river (see animateFlow).
+  map.addLayer(
+    {
+      id: 'river-flow',
+      type: 'line',
+      source: `river`,
+      layout: {
+        'line-join': 'round',
+      },
+      paint: {
+        'line-color': COLOURS.selectedRiverFlow,
+        'line-width': 3,
+        'line-dasharray': [0, 4, 3],
+      },
+    },
+    firstSymbolId,
+  );
   map.addLayer(
     {
       id: 'arrows',
@@ -192,9 +223,8 @@ map.on('load', (e) => {
       source: 'river',
       layout: {
         'symbol-placement': 'line',
-        'symbol-spacing': 150,
-        'icon-image': 'arrow', // The arrow image
-        'icon-size': 1.5,
+        'symbol-spacing': 220,
+        'icon-image': 'selected-arrow',
       },
     },
     firstSymbolId,
@@ -308,6 +338,7 @@ changeCursorOnHover(map, 'line_to_river');
 const marker = new maplibregl.Marker({ color: COLOURS.marker });
 
 const riverCard = document.querySelector('#river-card');
+let flowAnimating = false;
 
 document.querySelector('#river-card-close').addEventListener('click', () => {
   'use strict';
@@ -386,6 +417,12 @@ function mapPosition(latitude, longitude) {
 
       if (data.geometry) {
         map.getSource('river').setData(JSON.parse(data.geometry));
+        // Only start animating once there is a river to animate, so the map
+        // isn't repainting continuously while it sits idle.
+        if (!flowAnimating) {
+          animateFlow(map, 'river-flow');
+          flowAnimating = true;
+        }
       }
 
       map.fitBounds(
