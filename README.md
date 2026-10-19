@@ -7,6 +7,13 @@ A web-app which displays the closest river to the user with some information
 
 License: GPLv3
 
+## OSM data
+
+Waterways come from OpenStreetMap, loaded with osm2pgsql and kept current from
+the daily replication diffs. See [OSM_PIPELINE.md](OSM_PIPELINE.md) for how to
+bootstrap the data, seed a development database from a small extract, and what
+the daily sync and monthly rebuild do.
+
 ## Settings
 
 Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).

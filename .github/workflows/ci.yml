@@ -56,5 +56,17 @@ jobs:
       - name: Run Django Tests
         run: docker compose -f docker-compose.local.yml run django pytest
 
+      # The osm2pgsql integration tests skip themselves in the django image,
+      # which has no osm2pgsql. They are the only tests that prove the flex
+      # style, replication diffs and tile expiry actually work, so run them
+      # explicitly in the image that does.
+      - name: Build the OSM worker
+        run: docker compose -f docker-compose.local.yml build osmworker
+
+      - name: Run OSM pipeline integration tests
+        run: >
+          docker compose -f docker-compose.local.yml run --rm osmworker
+          pytest closest_river/rivers/tests/test_osm_pipeline.py -v
+
       - name: Tear down the Stack
         run: docker compose -f docker-compose.local.yml down

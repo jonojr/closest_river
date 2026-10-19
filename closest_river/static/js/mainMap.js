@@ -49,6 +49,41 @@ map.on('load', (e) => {
     type: 'vector',
     url: '/rivers/river-sections/tiles.json',
   });
+  // Streams first, so rivers draw on top of the wash.
+  //
+  // Deliberately lighter and thinner than rivers: at low zoom the stream
+  // network is dense enough that drawing it at full weight turns into a solid
+  // block of colour. Kept subordinate, it reads as texture and the main river
+  // network stays legible against it.
+  map.addLayer(
+    {
+      id: 'stream-sections',
+      type: 'line',
+      source: 'river-sections-data',
+      'source-layer': 'stream-sections',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#6970ff',
+        'line-opacity': 0.55,
+        // Hairline when zoomed out, approaching the river weight as you zoom in.
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          0.5,
+          9,
+          0.8,
+          14,
+          1.5,
+        ],
+      },
+    },
+    firstSymbolId,
+  );
   map.addLayer(
     {
       id: 'river-sections',
@@ -61,7 +96,17 @@ map.on('load', (e) => {
       },
       paint: {
         'line-color': '#6970ff',
-        'line-width': 2,
+        'line-width': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          4,
+          1,
+          9,
+          2,
+          14,
+          2.5,
+        ],
       },
     },
     firstSymbolId,
@@ -159,9 +204,17 @@ map.on('click', 'river', (e) => {
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
 });
 
-map.on('click', 'river-sections', (e) => {
+function showWaterwayPopup(e) {
   'use strict';
   const description = e.features[0].properties;
+
+  // At cached zooms the stream layer is merged into a single geometry to
+  // keep tiles small, so individual ways have no id and there is nothing to
+  // look up. Zooming in past the cache threshold (see CACHE_BELOW_ZOOM_LEVEL)
+  // un-merges them and makes them clickable again.
+  if (description.osm_way_id === undefined) {
+    return;
+  }
 
   let html = '<div class="container">';
 
@@ -184,7 +237,10 @@ map.on('click', 'river-sections', (e) => {
 
       new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-});
+}
+
+map.on('click', 'river-sections', showWaterwayPopup);
+map.on('click', 'stream-sections', showWaterwayPopup);
 
 map.on('click', 'line_to_river', (e) => {
   'use strict';
@@ -213,6 +269,7 @@ map.addControl(compassControl, 'bottom-left');
 
 changeCursorOnHover(map, 'river');
 changeCursorOnHover(map, 'river-sections');
+changeCursorOnHover(map, 'stream-sections');
 changeCursorOnHover(map, 'line_to_river');
 
 const marker = new maplibregl.Marker();

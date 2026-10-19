@@ -109,8 +109,21 @@
     <div class="col-md-4 d-flex align-items-center">
       <a href="https://www.flaticon.com/free-icons/river"
          class="ms-2 mb-3 me-2 mb-md-0 text-body-secondary text-decoration-none lh-1"
-         title="river icons"
-         class="p-3">River icons created by Freepik - Flaticon</a>
+         title="river icons">River icons created by Freepik - Flaticon</a>
+    </div>
+    <div class="col-md-4 d-flex justify-content-center">
+      <small class="text-body-secondary text-center">
+        River data from
+        <a class="text-body-secondary"
+           href="https://www.openstreetmap.org/copyright"
+           target="_blank"
+           rel="noopener">OpenStreetMap</a>
+        {% if osm_data_updated_at %}
+          , updated
+          <time datetime="{{ osm_data_updated_at|date:'c' }}"
+                title="{{ osm_data_updated_at }}">{{ osm_data_updated_at|date:"j M Y, g:i a" }}</time>
+        {% endif %}
+      </small>
     </div>
     <ul class="nav col-md-4 justify-content-end list-unstyled d-flex">
       <li class="ms-3">

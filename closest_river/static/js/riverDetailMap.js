@@ -47,6 +47,25 @@ map.on('load', (e) => {
     type: 'vector',
     url: '/rivers/river-sections/tiles.json',
   });
+  // Context behind the highlighted river: the stream wash, then other rivers,
+  // both faded so the river being viewed stands out.
+  map.addLayer(
+    {
+      id: 'stream-sections',
+      type: 'line',
+      source: 'river-sections-data',
+      'source-layer': 'stream-sections',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': 'rgba(105,112,255,0.18)',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.5, 14, 1.5],
+      },
+    },
+    firstSymbolId,
+  );
   map.addLayer(
     {
       id: 'river-sections',

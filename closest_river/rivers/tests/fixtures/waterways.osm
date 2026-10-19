@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--
+  Minimal waterway fixture for the osm2pgsql integration tests.
+
+  Objects must appear nodes -> ways -> relations, which is the order osm2pgsql
+  expects. Geometries are deliberately tens of kilometres long so they survive
+  the minimum-length filters applied to both tile tiers in waterways.lua.
+
+  way 100  waterway=river   member of relation 200, role main_stream
+  way 101  waterway=stream  no relation - must never reach a tile tier
+  way 102  waterway=river   member of relation 200, role side_stream
+  way 103  waterway=ditch   member of relation 201, a drain relation, so it is
+                            NOT promoted and must be ignored
+  way 104  waterway=canal   member of relation 200, so it IS promoted and must
+                            be stored as waterway=river - the Bendigo Creek case
+
+  relation 200  waterway=river
+  relation 201  waterway=drain
+-->
+<osm version="0.6" generator="handmade-fixture">
+  <node id="1" version="1" lat="-37.0" lon="145.0"/>
+  <node id="2" version="1" lat="-37.1" lon="145.2"/>
+  <node id="3" version="1" lat="-37.2" lon="145.4"/>
+  <node id="4" version="1" lat="-37.0" lon="146.0"/>
+  <node id="5" version="1" lat="-37.05" lon="146.05"/>
+  <node id="6" version="1" lat="-37.4" lon="145.6"/>
+  <node id="7" version="1" lat="-36.5" lon="144.0"/>
+  <node id="8" version="1" lat="-36.6" lon="144.2"/>
+  <node id="9" version="1" lat="-37.55" lon="145.75"/>
+
+  <way id="100" version="1">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <nd ref="3"/>
+    <tag k="waterway" v="river"/>
+    <tag k="name" v="Test River"/>
+  </way>
+  <way id="101" version="1">
+    <nd ref="4"/>
+    <nd ref="5"/>
+    <tag k="waterway" v="stream"/>
+    <tag k="name" v="Test Stream"/>
+  </way>
+  <way id="102" version="1">
+    <nd ref="3"/>
+    <nd ref="6"/>
+    <tag k="waterway" v="river"/>
+    <tag k="name" v="Test Side Channel"/>
+  </way>
+  <way id="103" version="1">
+    <nd ref="7"/>
+    <nd ref="8"/>
+    <tag k="waterway" v="ditch"/>
+    <tag k="name" v="Test Ditch"/>
+  </way>
+  <way id="104" version="1">
+    <nd ref="6"/>
+    <nd ref="9"/>
+    <tag k="waterway" v="canal"/>
+    <tag k="name" v="Test River"/>
+  </way>
+
+  <relation id="200" version="1">
+    <member type="way" ref="100" role="main_stream"/>
+    <member type="way" ref="102" role="side_stream"/>
+    <member type="way" ref="104" role="main_stream"/>
+    <tag k="type" v="waterway"/>
+    <tag k="waterway" v="river"/>
+    <tag k="name" v="Test River System"/>
+    <tag k="destination" v="Test Bay"/>
+  </relation>
+  <relation id="201" version="1">
+    <member type="way" ref="103" role="main_stream"/>
+    <tag k="type" v="waterway"/>
+    <tag k="waterway" v="drain"/>
+    <tag k="name" v="Test Drain System"/>
+  </relation>
+</osm>
