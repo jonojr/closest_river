@@ -5,14 +5,33 @@ import '@mapbox-controls/ruler/src/index.css';
 import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
-import { SearchButtonControl } from './SearchButtonControl';
 
 const map = new maplibregl.Map({
   container: 'map', // container id
-  style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${process.env.MAPTILER_API_KEY}`,
+  style: `https://api.maptiler.com/maps/dataviz/style.json?key=${process.env.MAPTILER_API_KEY}`,
   center: [135.0951931, -26.3911232],
   zoom: 3, // starting zoom
 });
+
+// Keep in step with $primary in custom_bootstrap_vars.scss.
+const COLOURS = {
+  waterway: '#3b82d6',
+  selectedRiver: '#0a3a82',
+  selectedRiverCasing: '#ffffff',
+  lineToRiver: '#334155',
+  marker: '#0b63c5',
+};
+
+// The finder and result panels float over the map: down the left on wider
+// screens, top and bottom on phones. Pad the camera so results land in the
+// part of the map that is still visible.
+const wideScreen = window.matchMedia('(min-width: 768px)');
+function cameraPadding() {
+  'use strict';
+  return wideScreen.matches
+    ? { top: 40, right: 70, bottom: 40, left: 380 }
+    : { top: 230, right: 60, bottom: 290, left: 30 };
+}
 
 function changeCursorOnHover(map, layerName) {
   'use strict';
@@ -66,8 +85,8 @@ map.on('load', (e) => {
         'line-cap': 'round',
       },
       paint: {
-        'line-color': '#6970ff',
-        'line-opacity': 0.55,
+        'line-color': COLOURS.waterway,
+        'line-opacity': 0.5,
         // Hairline when zoomed out, approaching the river weight as you zoom in.
         'line-width': [
           'interpolate',
@@ -95,7 +114,7 @@ map.on('load', (e) => {
         'line-cap': 'round',
       },
       paint: {
-        'line-color': '#6970ff',
+        'line-color': COLOURS.waterway,
         'line-width': [
           'interpolate',
           ['linear'],
@@ -135,6 +154,23 @@ map.on('load', (e) => {
   });
   map.addLayer(
     {
+      id: 'river-casing',
+      type: 'line',
+      source: `river`,
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': COLOURS.selectedRiverCasing,
+        'line-width': 9,
+        'line-opacity': 0.9,
+      },
+    },
+    firstSymbolId,
+  );
+  map.addLayer(
+    {
       id: `river`,
       type: 'line',
       source: `river`,
@@ -143,7 +179,7 @@ map.on('load', (e) => {
         'line-cap': 'round',
       },
       paint: {
-        'line-color': 'rgba(12,35,182,0.91)',
+        'line-color': COLOURS.selectedRiver,
         'line-width': 5,
       },
     },
@@ -179,10 +215,13 @@ map.on('load', (e) => {
       id: `line_to_river`,
       type: 'line',
       source: `line_to_river`,
+      layout: {
+        'line-cap': 'round',
+      },
       paint: {
-        'line-color': 'rgba(47,47,48,0.91)',
-        'line-width': 5,
-        'line-dasharray': [2, 1],
+        'line-color': COLOURS.lineToRiver,
+        'line-width': 3,
+        'line-dasharray': [0.5, 2],
       },
     },
     firstSymbolId,
@@ -250,7 +289,7 @@ map.on('click', 'line_to_river', (e) => {
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
 });
 
-const nav = new maplibregl.NavigationControl({ showCompass: false });
+const nav = new maplibregl.NavigationControl({ visualizePitch: true });
 map.addControl(nav, 'top-right');
 
 map.addControl(new RulerControl(), 'top-right');
@@ -259,20 +298,35 @@ const scale = new maplibregl.ScaleControl({
   maxWidth: 80,
   unit: 'metric',
 });
-map.addControl(scale);
-
-const compassControl = new maplibregl.NavigationControl({
-  showCompass: true,
-  showZoom: false,
-});
-map.addControl(compassControl, 'bottom-left');
+map.addControl(scale, 'bottom-right');
 
 changeCursorOnHover(map, 'river');
 changeCursorOnHover(map, 'river-sections');
 changeCursorOnHover(map, 'stream-sections');
 changeCursorOnHover(map, 'line_to_river');
 
-const marker = new maplibregl.Marker();
+const marker = new maplibregl.Marker({ color: COLOURS.marker });
+
+const riverCard = document.querySelector('#river-card');
+
+document.querySelector('#river-card-close').addEventListener('click', () => {
+  'use strict';
+  riverCard.hidden = true;
+});
+
+// Fill a result field, hiding its row entirely when there is nothing to show
+// rather than leaving an empty label.
+function setField(element, text, href) {
+  'use strict';
+  const row = element.closest('dl > div');
+  element.textContent = text || '';
+  if (href !== undefined) {
+    element.href = text ? href : '';
+  }
+  if (row) {
+    row.hidden = !text;
+  }
+}
 
 function mapPosition(latitude, longitude) {
   'use strict';
@@ -283,44 +337,40 @@ function mapPosition(latitude, longitude) {
   const destination = document.querySelector('#destination');
   const distance = document.querySelector('#distance');
 
-  name.textContent = '';
-  wikipedia.textContent = '';
-  destination.textContent = '';
-  status.textContent = '';
-  distance.textContent = '';
+  riverCard.hidden = true;
+  status.textContent = 'Finding the nearest river…';
 
   marker.setLngLat([longitude, latitude]).addTo(map);
 
   map.flyTo({
     center: [longitude, latitude],
     zoom: 12,
+    padding: cameraPadding(),
     essential: true, // this animation is considered essential with respect to prefers-reduced-motion
   });
 
   fetch(`rivers/closest_river/${latitude}/${longitude}`)
     .then((response) => response.json())
     .then((data) => {
-      // result.textContent = JSON.stringify(data, null, 4);
-      if (data.section.river) {
-        name.textContent = data.river.name;
-        name.href = `/rivers/${data.river.osm_id}/`;
-        if (data.river.destination) {
-          destination.textContent = data.river.destination;
-        }
+      const feature = data.section.river ? data.river : data.section;
 
-        if (data.river.wikipedia) {
-          wikipedia.textContent = data.river.wikipedia;
-          wikipedia.href = `https://en.wikipedia.org/wiki/${data.river.wikipedia}`;
-        }
+      name.textContent = feature?.name || 'Unnamed waterway';
+      if (data.section.river) {
+        name.href = `/rivers/${data.river.osm_id}/`;
       } else {
-        name.textContent = data.section?.name;
-        destination.textContent = data.section?.destination;
-        wikipedia.textContent = data.section?.wikipedia;
-        wikipedia.href = `https://en.wikipedia.org/wiki/${data.section?.wikipedia}`;
+        name.removeAttribute('href');
       }
-      distance.textContent = `${data.distance}km`;
+      setField(destination, feature?.destination);
+      setField(
+        wikipedia,
+        feature?.wikipedia,
+        `https://en.wikipedia.org/wiki/${feature?.wikipedia}`,
+      );
+      setField(distance, `${data.distance} km`);
 
       distanceToClosestRiver = data.distance;
+      status.textContent = '';
+      riverCard.hidden = false;
 
       map.getSource('line_to_river').setData({
         type: 'Feature',
@@ -337,6 +387,17 @@ function mapPosition(latitude, longitude) {
       if (data.geometry) {
         map.getSource('river').setData(JSON.parse(data.geometry));
       }
+
+      map.fitBounds(
+        new maplibregl.LngLatBounds(
+          [longitude, latitude],
+          [longitude, latitude],
+        ).extend(data.closest_point_on_river),
+        { padding: cameraPadding(), maxZoom: 13, essential: true },
+      );
+    })
+    .catch(() => {
+      status.textContent = "Couldn't find a river near there. Try again?";
     });
 }
 
@@ -378,18 +439,17 @@ const geocoderApi = {
     };
   },
 };
-map.addControl(new SearchButtonControl(), 'top-left');
-map.addControl(
-  new MaplibreGeocoder(geocoderApi, {
-    maplibregl,
+const geocoder = new MaplibreGeocoder(geocoderApi, {
+  maplibregl,
+  placeholder: 'Search for a place',
+  zoom: 12,
+  flyTo: {
     zoom: 12,
-    flyTo: {
-      zoom: 12,
-      essential: true,
-    },
-  }),
-  'top-left',
-);
+    padding: cameraPadding(),
+    essential: true,
+  },
+});
+document.querySelector('#geocoder').appendChild(geocoder.onAdd(map));
 
 function geolocateAndFindRiver() {
   'use strict';
