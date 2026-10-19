@@ -55,24 +55,36 @@ const FLOW_DASH_STEPS = [
 // Animate a dashed line layer so the dashes drift downstream. Falls back to a
 // static dash for people who have asked for reduced motion.
 //
+// Options: stepMs sets the speed; scale stretches the dash pattern (dash units
+// are multiples of the line width, so thin lines need a larger scale to get
+// readable dashes). The layer's initial line-dasharray should be
+// [0, 4 * scale, 3 * scale].
+//
 // Returns { start, stop }: stop it while nothing is selected so the map isn't
 // repainting continuously while it sits idle. Safe to leave running across a
-// style change; steps are skipped while the layer doesn't exist.
-export function animateFlow(map, layerId, { stepMs = 60 } = {}) {
+// style change, and costs nothing while the layer is missing, hidden or zoomed
+// out past its minzoom: steps are skipped, so the map isn't repainted.
+export function animateFlow(map, layerId, { stepMs = 60, scale = 1 } = {}) {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const steps = FLOW_DASH_STEPS.map((dashes) => dashes.map((d) => d * scale));
   let step = 0;
   let last = 0;
   let frameId = null;
 
+  function isShowing() {
+    const layer = map.getLayer(layerId);
+    return (
+      layer !== undefined &&
+      map.getLayoutProperty(layerId, 'visibility') !== 'none' &&
+      map.getZoom() >= (layer.minzoom ?? 0)
+    );
+  }
+
   function frame(timestamp) {
-    if (
-      !reducedMotion.matches &&
-      timestamp - last >= stepMs &&
-      map.getLayer(layerId)
-    ) {
+    if (!reducedMotion.matches && timestamp - last >= stepMs && isShowing()) {
       last = timestamp;
-      step = (step + 1) % FLOW_DASH_STEPS.length;
-      map.setPaintProperty(layerId, 'line-dasharray', FLOW_DASH_STEPS[step]);
+      step = (step + 1) % steps.length;
+      map.setPaintProperty(layerId, 'line-dasharray', steps[step]);
     }
     frameId = requestAnimationFrame(frame);
   }

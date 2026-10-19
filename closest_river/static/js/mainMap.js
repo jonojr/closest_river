@@ -20,6 +20,7 @@ const PALETTES = {
     stream: '#6fa6e4',
     selectedRiver: '#0a3a82',
     selectedRiverCasing: '#ffffff',
+    riverFlow: '#cfe3fb',
     selectedRiverFlow: '#8ec5ff',
     selectedArrowFill: '#ffffff',
     lineToRiver: '#334155',
@@ -30,6 +31,7 @@ const PALETTES = {
     stream: '#3b6aa3',
     selectedRiver: '#9fd2ff',
     selectedRiverCasing: '#0b1220',
+    riverFlow: '#1b3d6b',
     selectedRiverFlow: '#1e5bb0',
     selectedArrowFill: '#0b1220',
     lineToRiver: '#cbd5e1',
@@ -70,6 +72,14 @@ function cameraPadding() {
 // after a basemap swap (setStyle throws away every source and layer).
 const selection = { river: EMPTY, lineToRiver: EMPTY };
 const flow = animateFlow(map, 'river-flow');
+// Gentler and slower than the selected river, with a stretched dash so it
+// reads as a drift rather than a shimmer on the thinner lines.
+const NETWORK_FLOW_SCALE = 2;
+const networkFlow = animateFlow(map, 'river-section-flow', {
+  stepMs: 90,
+  scale: NETWORK_FLOW_SCALE,
+});
+networkFlow.start();
 
 // Everything we draw on top of the basemap. Runs on every style load: the
 // first one, and again whenever the theme changes the basemap.
@@ -196,6 +206,28 @@ function addRiverLayers() {
           14,
           3.5,
         ],
+      },
+    },
+    firstSymbolId,
+  );
+  // Subtle downstream drift along every river (see animateFlow). Not below
+  // zoom 9: there the network is too dense for movement to mean anything,
+  // and it would keep the whole map repainting.
+  map.addLayer(
+    {
+      id: 'river-section-flow',
+      type: 'line',
+      source: 'river-sections-data',
+      'source-layer': 'river-sections',
+      minzoom: 9,
+      layout: {
+        'line-join': 'round',
+      },
+      paint: {
+        'line-color': colours.riverFlow,
+        'line-opacity': 0.7,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.8, 14, 1.4],
+        'line-dasharray': [0, 4 * NETWORK_FLOW_SCALE, 3 * NETWORK_FLOW_SCALE],
       },
     },
     firstSymbolId,
@@ -508,6 +540,11 @@ map.addControl(
       key: 'streams',
       label: 'Creeks & streams',
       layers: ['stream-sections', 'stream-section-arrows'],
+    },
+    {
+      key: 'flow',
+      label: 'Animate river flow',
+      layers: ['river-section-flow'],
     },
   ]),
   'top-right',
