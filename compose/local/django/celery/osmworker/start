@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+
+
+# Dedicated worker for the OSM import/sync queue. See the production script for
+# why concurrency is pinned to 1.
+exec watchfiles --filter python celery.__main__.main \
+  --args '-A config.celery_app worker -l INFO --queues osm --concurrency 1 --prefetch-multiplier 1'

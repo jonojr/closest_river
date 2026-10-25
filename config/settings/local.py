@@ -1,7 +1,7 @@
-# ruff: noqa: E501
 from .base import *  # noqa: F403
 from .base import INSTALLED_APPS
 from .base import MIDDLEWARE
+from .base import REDIS_CACHE_URL
 from .base import WEBPACK_LOADER
 from .base import env
 
@@ -20,10 +20,17 @@ ALLOWED_HOSTS = ["localhost", "0.0.0.0", "127.0.0.1"]  # noqa: S104
 # CACHES
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#caches
+# Redis rather than LocMemCache, so that tile invalidation issued by the Celery
+# worker is actually visible to the web process. LocMemCache is per-process, which
+# would make the invalidation path untestable locally.
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "",
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_CACHE_URL,
+        "KEY_PREFIX": "closest_river",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
     },
 }
 
@@ -62,7 +69,7 @@ if env("USE_DOCKER") == "yes":
     import socket
 
     hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
-    INTERNAL_IPS += [".".join(ip.split(".")[:-1] + ["1"]) for ip in ips]
+    INTERNAL_IPS += [".".join([*ip.split(".")[:-1], "1"]) for ip in ips]
     try:
         _, _, ips = socket.gethostbyname_ex("node")
         INTERNAL_IPS.extend(ips)

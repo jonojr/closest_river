@@ -8,7 +8,7 @@ RUN npm install && npm cache clean --force
 COPY . ${APP_HOME}
 RUN npm run build
 # define an alias for the specific python version used in this file.
-FROM docker.io/python:3.12.13-slim-bookworm AS python
+FROM docker.io/python:3.12.13-slim-trixie AS python
 
 # Python build stage
 FROM python AS python-build-stage
@@ -105,5 +105,53 @@ USER django
 RUN DATABASE_URL="" \
   DJANGO_SETTINGS_MODULE="config.settings.test" \
   python manage.py compilemessages
+
+ENTRYPOINT ["/entrypoint"]
+
+
+# OSM tooling stage
+# -----------------------------------------------------------------------------
+# Used only by the osmworker service. Kept as a stage on top of the app image so
+# the application code and Python dependencies cannot drift from the web image,
+# while osm2pgsql and osmium stay out of anything serving requests.
+#
+# Debian trixie ships osm2pgsql 2.1.1, which has define_expire_output (needed for
+# tile expiry) and the properties table (needed by osm2pgsql-replication).
+# It predates 2.3, so do NOT use max_tiles_geometry/max_tiles_overall/diff_expire
+# in waterways.lua.
+FROM python-run-stage AS osm-tools
+
+USER root
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  osm2pgsql \
+  osmium-tool \
+  # Fetching extracts and replication diffs, and psql for maintenance SQL.
+  ca-certificates \
+  curl \
+  postgresql-client \
+  # osm2pgsql-replication is a Debian script with a /usr/bin/python3 shebang.
+  # It imports osmium.WriteHandler, which was REMOVED in pyosmium 4.x, so it
+  # cannot run under the application interpreter (requirements pin
+  # osmium==4.2.0). Give it Debian's own pyosmium 3.x and psycopg2 instead.
+  python3-pyosmium \
+  python3-psycopg2 \
+  && rm -rf /var/lib/apt/lists/*
+
+# Smoke-test the tooling at build time.
+# Note: `osm2pgsql-replication --help` exits 1 by design — the script catches
+# argparse's SystemExit and returns 1 — so assert on the imports it needs.
+RUN osm2pgsql --version \
+  && osmium --version \
+  && /usr/bin/python3 -c "\
+from osmium.replication.server import ReplicationServer; \
+from osmium import WriteHandler; \
+import psycopg2"
+
+COPY --chown=django:django ./compose/production/django/celery/osmworker/start /start-osmworker
+RUN sed -i 's/\r$//g' /start-osmworker
+RUN chmod +x /start-osmworker
+
+USER django
 
 ENTRYPOINT ["/entrypoint"]

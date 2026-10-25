@@ -1,5 +1,4 @@
 volumes:
-  production_postgres_data_backups: {}
   production_traefik: {}
   production_redis_data: {}
 
@@ -8,6 +7,7 @@ services:
     build:
       context: .
       dockerfile: ./compose/production/django/Dockerfile
+      target: python-run-stage
 
     image: closest_river_production_django
     volumes:
@@ -29,15 +29,47 @@ services:
     image: closest_river_production_postgres
     volumes:
       - /mnt/Data/closest_river/postgres:/var/lib/postgresql/data
-      - production_postgres_data_backups:/backups
+      # Backups belong on the big disk alongside the data, not on the root
+      # filesystem where a named volume would put them.
+      - /mnt/Data/closest_river/postgres_backups:/backups
     env_file:
       - ./.envs/.production/.postgres
+    # The stock image defaults (128MB shared_buffers, 4MB work_mem, 64MB
+    # maintenance_work_mem) are far too small for a planet-scale bulk load and
+    # for ST_AsMVT at low zoom. Override per-box via the shell or a root .env;
+    # the defaults below assume roughly 16GB of RAM.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-4GB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-12GB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-2GB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-64MB}
+      - -c
+      - max_wal_size=${POSTGRES_MAX_WAL_SIZE:-8GB}
+      - -c
+      - random_page_cost=${POSTGRES_RANDOM_PAGE_COST:-1.1}
 
   redis:
     image: docker.io/redis:6
 
     volumes:
       - production_redis_data:/data
+
+  # Separate instance from the broker. Cached tiles are bulky and long-lived,
+  # so this one is memory-capped with LRU eviction — which must never be
+  # applied to the instance holding the Celery queue, where evicting a key
+  # means losing a task. No persistence: it is a cache.
+  redis-cache:
+    image: docker.io/redis:6
+    command: >
+      redis-server
+      --maxmemory ${REDIS_CACHE_MAXMEMORY:-2gb}
+      --maxmemory-policy allkeys-lru
+      --save ""
 
   celeryworker:
     <<: *django
@@ -57,6 +89,20 @@ services:
     command: /start-flower
     ports:
       - 5555:5555
+
+  osmworker:
+    <<: *django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+      target: osm-tools
+    image: closest_river_production_osmworker
+    volumes:
+      # Planet PBF, filtered extracts and replication working files. Needs
+      # several hundred GB free; keep it on the big disk.
+      - /mnt/Data/closest_river/osm:/data:rw
+    command: /start-osmworker
+    ports: []
 
   nginx:
     build:

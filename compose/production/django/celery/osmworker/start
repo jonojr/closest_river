@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+
+# Dedicated worker for the OSM import/sync queue.
+#
+# Concurrency 1 because the sync is disk- and database-exclusive: two runs at
+# once would corrupt the replication cursor. This is belt-and-braces alongside
+# the lock the task itself takes.
+#
+# The default worker (start-celeryworker) consumes only the default queue, so
+# these long-running jobs can never starve request-path tasks.
+exec celery -A config.celery_app worker -l INFO \
+  --queues osm \
+  --concurrency 1 \
+  --prefetch-multiplier 1

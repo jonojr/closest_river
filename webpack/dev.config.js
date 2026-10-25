@@ -7,7 +7,12 @@ module.exports = merge(commonConfig, {
   mode: 'development',
   devtool: 'inline-source-map',
   plugins: [
-    new Dotenv({ path: path.resolve(__dirname, '../.envs/.local/.node') }),
+    // Real keys go in .envs/.local/.node.local, which is gitignored; .node
+    // only holds placeholders, so nothing secret gets committed.
+    new Dotenv({
+      path: path.resolve(__dirname, '../.envs/.local/.node.local'),
+      defaults: path.resolve(__dirname, '../.envs/.local/.node'),
+    }),
   ],
   devServer: {
     port: 3000,

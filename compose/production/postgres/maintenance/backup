@@ -32,7 +32,11 @@ export PGPASSWORD="${POSTGRES_PASSWORD}"
 export PGDATABASE="${POSTGRES_DB}"
 
 backup_filename="${BACKUP_FILE_PREFIX}_$(date +'%Y_%m_%dT%H_%M_%S').sql.gz"
-pg_dump | gzip > "${BACKUP_DIR_PATH}/${backup_filename}"
+
+# osm2pgsql's slim middle tables are large and fully reproducible from a rebuild,
+# so there is no reason to carry them in every dump.
+pg_dump --exclude-schema="${BACKUP_EXCLUDE_SCHEMA:-osm_middle}" \
+    | gzip > "${BACKUP_DIR_PATH}/${backup_filename}"
 
 
 message_success "'${POSTGRES_DB}' database backup '${backup_filename}' has been created and placed in '${BACKUP_DIR_PATH}'."

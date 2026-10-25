@@ -3,6 +3,7 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.db.models.functions import GeometryDistance
 from django.contrib.gis.geos import Point
 from django.core.serializers import serialize
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -10,6 +11,20 @@ from closest_river.rivers.api.serialziers import RiverSectionSerializer
 from closest_river.rivers.api.serialziers import RiverSerializer
 from closest_river.rivers.models import River
 from closest_river.rivers.models import RiverSection
+
+# A large river can have thousands of sections. Serialising all of them at full
+# resolution is the single most expensive thing these endpoints can do, so cap
+# it. Phase 7 replaces this with a pre-simplified geometry on the river itself.
+MAX_SECTIONS_IN_RESPONSE = 500
+
+
+def _river_geometry(river: River | None, fallback: RiverSection):
+    """Sections to draw for a river, bounded in both count and column width."""
+    if river is None:
+        return [fallback]
+    return river.sections.only("osm_way_id", "name", "geometry").order_by(
+        "osm_way_id",
+    )[:MAX_SECTIONS_IN_RESPONSE]
 
 
 class ClosestRiver(APIView):
@@ -22,15 +37,20 @@ class ClosestRiver(APIView):
     def get(self, request, lat: str, lon: str):
         user_point = Point(float(lon), float(lat), srid=4326)
 
+        # Only rivers are eligible, not streams — templates/pages/instructions.html
+        # tells users that smaller water-courses are never highlighted as their
+        # closest river.
+        candidates = RiverSection.objects.filter(waterway="river")
+
         # Do a rough filter using GeometryDistance & grab the 3 closest river sections.
-        river_sections = RiverSection.objects.annotate(
+        river_sections = candidates.annotate(
             distance=GeometryDistance("geometry", user_point),
         ).order_by("distance")[:3]
 
         # Calculate the exact distance & closest points to each of the 3 sections.
         # Select the closest.
         river_section = (
-            RiverSection.objects.filter(pk__in=river_sections)
+            candidates.filter(pk__in=river_sections)
             .annotate(
                 distance=Distance("geometry", user_point),
                 closest_point=ClosestPoint("geometry", user_point),
@@ -39,13 +59,15 @@ class ClosestRiver(APIView):
             .first()
         )
 
+        if river_section is None:
+            # No waterway data loaded yet, or none within range.
+            raise NotFound(detail="No river data is available.")
+
         river = river_section.river
         section_serializer = RiverSectionSerializer(river_section)
-        river_serializer = RiverSerializer(river_section.river)
+        river_serializer = RiverSerializer(river)
 
-        geometry_iterable = river.sections.all() if river else [river_section]
-
-        geometry = serialize("geojson", geometry_iterable)
+        geometry = serialize("geojson", _river_geometry(river, river_section))
 
         return Response(
             {
@@ -63,7 +85,12 @@ class RiverGeo(APIView):
 
     def get(self, request, osm_id: int):
         river = River.objects.get(osm_id=osm_id)
-        geometry = serialize("geojson", river.sections.all())
+        geometry = serialize(
+            "geojson",
+            river.sections.only("osm_way_id", "name", "geometry").order_by(
+                "osm_way_id",
+            )[:MAX_SECTIONS_IN_RESPONSE],
+        )
 
         return Response(
             {
@@ -103,10 +130,10 @@ class RiverSectionPopupInfo(APIView):
 
         popup_data = {}
         if river:
-            popup_data.update(river.tags)
+            popup_data.update(river.tags or {})
             popup_data["river_osm_id"] = river.osm_id
 
-        popup_data.update(river_section.tags)
+        popup_data.update(river_section.tags or {})
         popup_data["name"] = river.name if river else river_section.name
 
         final_popup_data = {}
