@@ -79,8 +79,11 @@ services:
       - -c
       - random_page_cost=${POSTGRES_RANDOM_PAGE_COST:-1.1}
 
+  # Valkey, as in docker-compose.local.yml. It speaks the Redis protocol, so the
+  # service names stay `redis` and `redis-cache` and every redis:// URL, Celery
+  # and django-redis work unchanged.
   redis:
-    image: docker.io/redis:6
+    image: docker.io/valkey/valkey:7
 
     volumes:
       - production_redis_data:/data
@@ -90,9 +93,9 @@ services:
   # applied to the instance holding the Celery queue, where evicting a key
   # means losing a task. No persistence: it is a cache.
   redis-cache:
-    image: docker.io/redis:6
+    image: docker.io/valkey/valkey:7
     command: >
-      redis-server
+      valkey-server
       --maxmemory ${REDIS_CACHE_MAXMEMORY:-2gb}
       --maxmemory-policy allkeys-lru
       --save ""
