@@ -10,3 +10,8 @@
 venv
 .git
 .envs/
+# Built inside the image (client-builder stage); host copies are stale at best,
+# and a host node_modules would overwrite the one npm installed for the image.
+node_modules/
+closest_river/static/webpack_bundles/
+webpack-stats.json

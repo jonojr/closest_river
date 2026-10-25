@@ -46,10 +46,12 @@ SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
 SESSION_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#session-cookie-name
 SESSION_COOKIE_NAME = "__Secure-sessionid"
-CSRF_TRUSTED_ORIGINS = [
-    "https://closest-river.jonojr.dev",
-    "https://myclosestriver.com",
-]
+# Per deployment, like ALLOWED_HOSTS: a test site on its own host name needs
+# its own origin here, or every POST from it (the admin login) fails CSRF.
+CSRF_TRUSTED_ORIGINS = env.list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=["https://closest-river.jonojr.dev", "https://myclosestriver.com"],
+)
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-secure
 CSRF_COOKIE_SECURE = True
 # https://docs.djangoproject.com/en/dev/ref/settings/#csrf-cookie-name
@@ -166,4 +168,9 @@ SPECTACULAR_SETTINGS["SERVERS"] = [
 ]
 # Your stuff...
 # ------------------------------------------------------------------------------
-VECTOR_TILES_URLS = ["https://myclosestriver.com"]
+# The host the TileJSON tells the map to fetch tiles from. Per deployment: left
+# at the default, a test site would draw production's tiles.
+VECTOR_TILES_URLS = env.list(
+    "VECTOR_TILES_URLS",
+    default=["https://myclosestriver.com"],
+)
