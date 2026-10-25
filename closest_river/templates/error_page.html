@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% comment %}
+  An error page: a short message centred in the page, and a way back to the
+  map. Pages fill code, icon, heading and message.
+{% endcomment %}
+{% block content %}
+  <section class="empty-state">
+    <span class="icon-badge" aria-hidden="true"><i class="bi {% block icon %}bi-signpost-split{% endblock icon %}"></i></span>
+    <p class="empty-state__code">
+      {% block code %}
+      {% endblock code %}
+    </p>
+    <h1 class="empty-state__title">
+      {% block heading %}
+      {% endblock heading %}
+    </h1>
+    <p class="empty-state__text">
+      {% block message %}
+      {% endblock message %}
+    </p>
+    <a class="btn btn-primary" href="{% url 'home' %}">
+      <i class="bi bi-map me-2" aria-hidden="true"></i>Back to the map
+    </a>
+  </section>
+{% endblock content %}

@@ -1,20 +1,37 @@
-{% extends "base.html" %}
+{% extends "pages/content_page.html" %}
 
-{% block content %}
-  <div class="m-3">
-    <h1>Cautions</h1>
+{% block page_title %}
+  Cautions
+{% endblock page_title %}
+{% block eyebrow %}
+  Cautions
+{% endblock eyebrow %}
+{% block heading %}
+  Know the limits of the map
+{% endblock heading %}
+{% block lede %}
+  Waterways are vibrant, ever-changing and at times unpredictable, sometimes disappearing during scorching droughts or flooding after rains.
+{% endblock lede %}
+{% block page_body %}
+  <div class="callout" role="note">
+    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+    <div>
+      <p>
+        <strong>‘My Closest River’ is not to be relied upon for accuracy at any given time.</strong>
+      </p>
+      <p>
+        Do not use ‘My Closest River’ if you need up to date or accurate information about the location of rivers and waterways.
+      </p>
+    </div>
+  </div>
+  <div class="prose">
+    <h2>Where the map data comes from</h2>
     <p>
-      ‘My Closet River’ is based on map data from ‘Open Street Map’, an open source worldwide mapping effort operated by the UK-registered not for profit organization ‘The Open Street Map Foundation’. This mapping effort includes more than a million volunteers around the globe. This mapping effort is on-going and no guarantee is made to its accuracy at any given time.
+      ‘My Closest River’ is based on map data from <a href="https://www.openstreetmap.org/" target="_blank" rel="noopener">OpenStreetMap</a>, an open source worldwide mapping effort operated by the UK-registered not for profit organization ‘The OpenStreetMap Foundation’. This mapping effort includes more than a million volunteers around the globe. This mapping effort is on-going and no guarantee is made to its accuracy at any given time.
     </p>
+    <h2>Who made it</h2>
     <p>
-      ‘My Closest River’, which gratefully uses the free map data from ‘Open Street Map’, is a web app originating in Australia. It has been created by a collaboration between a Software Engineer and a Landscape Designer. Its aim is to help symbolically re-connect people and the rivers around them and to illustrate the magnificent network of waterways and the eco-systems and peoples that surround them.
-    </p>
-    <p>
-      Waterways are vibrant, ever-changing and at times unpredictable, sometimes disappearing during scorching droughts or flooding after rains.
-    </p>
-    <p>'My Closest River' is not to be relied upon for accuracy at any given time.</p>
-    <p>
-      Do not use 'My Closest River' if you need up to date or accurate information about the location of rivers and waterways.
+      ‘My Closest River’, which gratefully uses the free map data from OpenStreetMap, is a web app originating in Australia. It has been created by a collaboration between a Software Engineer and a Landscape Designer. Its aim is to help symbolically re-connect people and the rivers around them and to illustrate the magnificent network of waterways and the eco-systems and peoples that surround them.
     </p>
   </div>
-{% endblock content %}
+{% endblock page_body %}
