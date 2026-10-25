@@ -76,6 +76,24 @@ def test_a_failure_reports_the_last_output(caplog):
     assert "what went wrong" in failure.getMessage()
 
 
+def test_a_failure_does_not_report_every_progress_redraw(caplog):
+    with pytest.raises(osm_pipeline.OsmPipelineError):
+        osm_pipeline._run(
+            _python(
+                "import sys\n"
+                "for n in range(100):\n"
+                "    sys.stderr.write(f'\\rfetching chunks {n:3d}% |##   |')\n"
+                "print('\\nstream error: INTERNAL_ERROR')\n"
+                "sys.exit(1)",
+            ),
+            description="example",
+        )
+
+    report = caplog.records[-1].getMessage()
+    assert report.count("fetching chunks") == 1
+    assert "stream error: INTERNAL_ERROR" in report
+
+
 def test_a_missing_binary_says_which_container_to_use():
     with pytest.raises(osm_pipeline.OsmPipelineError, match="osmworker"):
         osm_pipeline._run(["no-such-binary"], description="example")

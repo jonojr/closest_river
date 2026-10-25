@@ -83,6 +83,30 @@ def test_basemap_is_cut_to_the_configured_area_and_zoom(pmtiles, basemap_dir):
     assert not (basemap_dir / ".basemap.pmtiles.partial").exists()
 
 
+def test_the_whole_planet_is_downloaded_rather_than_extracted(
+    monkeypatch,
+    pmtiles,
+    settings,
+    basemap_dir,
+):
+    """Nothing to cut, and a download can resume where pmtiles extract
+    starts again: the planet build is over 120 GB."""
+    settings.BASEMAP_BBOX = ""
+    downloads = []
+    monkeypatch.setattr(
+        basemap,
+        "download",
+        lambda url, destination: downloads.append((url, destination)),
+    )
+
+    basemap.fetch_basemap(source="https://example.com/planet.pmtiles")
+
+    assert downloads == [
+        ("https://example.com/planet.pmtiles", basemap_dir / "basemap.pmtiles"),
+    ]
+    assert pmtiles == []
+
+
 def test_no_bbox_means_the_whole_planet(pmtiles, settings):
     settings.BASEMAP_BBOX = ""
 
@@ -93,11 +117,24 @@ def test_no_bbox_means_the_whole_planet(pmtiles, settings):
     assert not any(arg.startswith("--bbox") for arg in pmtiles[0])
 
 
-def test_a_failed_extract_keeps_the_archive_being_served(monkeypatch, basemap_dir):
+@pytest.fixture
+def no_retry_wait(monkeypatch):
+    waits = []
+    monkeypatch.setattr(basemap.time, "sleep", waits.append)
+    return waits
+
+
+def test_a_failed_extract_keeps_the_archive_being_served(
+    monkeypatch,
+    basemap_dir,
+    no_retry_wait,
+):
     live = basemap_dir / "basemap.pmtiles"
     live.write_bytes(b"old tiles")
+    attempts = []
 
     def fail(command, *, description):
+        attempts.append(command)
         basemap.Path(command[3]).write_bytes(b"half")
         raise OsmPipelineError(description)
 
@@ -106,8 +143,29 @@ def test_a_failed_extract_keeps_the_archive_being_served(monkeypatch, basemap_di
     with pytest.raises(OsmPipelineError):
         basemap.fetch_basemap(source="https://example.com/planet.pmtiles")
 
+    assert len(attempts) == basemap.EXTRACT_ATTEMPTS
     assert live.read_bytes() == b"old tiles"
     assert not (basemap_dir / ".basemap.pmtiles.partial").exists()
+
+
+def test_a_dropped_connection_is_retried(monkeypatch, basemap_dir, no_retry_wait):
+    attempts = []
+
+    def flaky(command, *, description):
+        attempts.append(command)
+        if len(attempts) == 1:
+            basemap.Path(command[3]).write_bytes(b"half")
+            msg = "stream error: stream ID 3; INTERNAL_ERROR"
+            raise OsmPipelineError(msg)
+        basemap.Path(command[3]).write_bytes(b"tiles")
+
+    monkeypatch.setattr(basemap, "_run", flaky)
+
+    path = basemap.fetch_basemap(source="https://example.com/planet.pmtiles")
+
+    assert len(attempts) == 2
+    assert no_retry_wait == [basemap.EXTRACT_RETRY_SECONDS]
+    assert path.read_bytes() == b"tiles"
 
 
 def _tarball(files: dict[str, bytes]) -> bytes:
