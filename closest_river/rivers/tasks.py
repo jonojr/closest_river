@@ -6,6 +6,7 @@ osmium installed, and the only one with the data volume mounted.
 """
 
 import logging
+import time
 from contextlib import contextmanager
 
 from django.conf import settings
@@ -50,6 +51,34 @@ def _pipeline_lock(owner: str, timeout: int):
         cache.delete(_LOCK_KEY)
 
 
+class _Steps:
+    """Logs each step of a task as it starts and how long it took.
+
+    A full import runs for hours, mostly in single steps, so the log should
+    say which step it is on and how far through the task that is.
+    """
+
+    def __init__(self, task: str, total: int):
+        self.task = task
+        self.total = total
+        self.number = 0
+        self.started = time.monotonic()
+
+    @contextmanager
+    def step(self, description: str):
+        self.number += 1
+        label = f"{self.task} [{self.number}/{self.total}] {description}"
+        logger.info("%s", label)
+        started = time.monotonic()
+        yield
+        elapsed = osm_pipeline.format_duration(time.monotonic() - started)
+        logger.info("%s: done in %s", label, elapsed)
+
+    @property
+    def elapsed(self) -> str:
+        return osm_pipeline.format_duration(time.monotonic() - self.started)
+
+
 @app.task(
     name="closest_river.rivers.tasks.sync_osm_waterways",
     # Far above a normal day's diff, but bounded so a wedged run is eventually
@@ -69,19 +98,26 @@ def sync_osm_waterways() -> dict:
     from closest_river.rivers.views import RiverSectionBaseLayer
 
     layer_ids = [layer.id for layer in RiverSectionBaseLayer.layer_classes]
+    steps = _Steps("OSM sync", total=3)
 
     with _pipeline_lock("sync_osm_waterways", _SYNC_LOCK_TIMEOUT):
-        osm_pipeline.replication_update()
-        osm_pipeline.analyze_schema(settings.OSM_SCHEMA)
-
-        tiles_expired = invalidate_expired_tiles(layer_ids)
+        with steps.step("Applying replication diffs"):
+            osm_pipeline.replication_update()
+        with steps.step("Analyzing tables"):
+            osm_pipeline.analyze_schema(settings.OSM_SCHEMA)
+        with steps.step("Invalidating changed tiles"):
+            tiles_expired = invalidate_expired_tiles(layer_ids)
 
         state = SyncState.load()
         state.last_sync_at = timezone.now()
         state.last_sync_tiles_expired = tiles_expired
         state.save(update_fields=["last_sync_at", "last_sync_tiles_expired"])
 
-    logger.info("OSM sync complete; %s cached tiles invalidated", tiles_expired)
+    logger.info(
+        "OSM sync complete in %s; %s cached tiles invalidated",
+        steps.elapsed,
+        tiles_expired,
+    )
     return {"tiles_expired": tiles_expired}
 
 
@@ -105,31 +141,44 @@ def full_import_osm_waterways(*, download: bool = True) -> dict:
     live_schema = settings.OSM_SCHEMA
     staging_schema = f"{live_schema}_staging"
 
+    steps = _Steps("Full OSM import", total=7 if download else 6)
+
     with _pipeline_lock("full_import_osm_waterways", _IMPORT_LOCK_TIMEOUT):
         planet = osm_pipeline.data_dir() / "planet-latest.osm.pbf"
         if download:
-            planet = osm_pipeline.download_planet(destination=planet)
+            with steps.step("Downloading the planet"):
+                planet = osm_pipeline.download_planet(destination=planet)
         elif not planet.exists():
             msg = f"{planet} does not exist and download was disabled"
             raise osm_pipeline.OsmPipelineError(msg)
 
-        waterways = osm_pipeline.filter_waterways(planet)
+        with steps.step("Filtering to waterways"):
+            waterways = osm_pipeline.filter_waterways(planet)
 
-        osm_pipeline.import_pbf(waterways, schema=staging_schema)
-        osm_pipeline.swap_schema(staging=staging_schema, live=live_schema)
+        with steps.step(f"Importing into {staging_schema}"):
+            osm_pipeline.import_pbf(waterways, schema=staging_schema)
+        with steps.step(f"Swapping {staging_schema} in as {live_schema}"):
+            osm_pipeline.swap_schema(staging=staging_schema, live=live_schema)
 
         # Init after the swap so the cursor is recorded against the live schema.
-        osm_pipeline.replication_init(waterways, schema=live_schema)
-        osm_pipeline.analyze_schema(live_schema)
+        with steps.step("Initialising replication"):
+            osm_pipeline.replication_init(waterways, schema=live_schema)
+        with steps.step("Analyzing tables"):
+            osm_pipeline.analyze_schema(live_schema)
 
         # A rebuild emits no expiry information — osm2pgsql only expires in
         # append mode — and invalidates essentially everything anyway, so this
         # is the one case where stranding the entire tile cache is correct.
-        version = bump_data_version()
+        with steps.step("Invalidating the tile cache"):
+            version = bump_data_version()
 
         state = SyncState.load()
         state.last_full_import_at = timezone.now()
         state.save(update_fields=["last_full_import_at"])
 
-    logger.info("Full OSM import complete; tile data version now %s", version)
+    logger.info(
+        "Full OSM import complete in %s; tile data version now %s",
+        steps.elapsed,
+        version,
+    )
     return {"data_version": version}

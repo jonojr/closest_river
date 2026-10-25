@@ -18,6 +18,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
+from collections import deque
 from pathlib import Path
 
 import requests
@@ -32,6 +34,17 @@ logger = logging.getLogger(__name__)
 REPLICATION_BIN = "/usr/bin/osm2pgsql-replication"
 
 DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+# How often the long-running steps report how far they have got.
+DOWNLOAD_PROGRESS_SECONDS = 60
+OSM2PGSQL_PROGRESS_SECONDS = 30
+
+# osm2pgsql rewrites one progress line several times a second
+# ("Processing: Node(1234k 567.8k/s) Way(...)"); these are throttled.
+_PROGRESS_LINE = re.compile(r"Processing: ")
+
+# Output kept for the error message when a command fails.
+_OUTPUT_TAIL_LINES = 50
 
 # The table a schema's health is judged by: it is what the closest-river query
 # reads, and no schema is usable without it.
@@ -54,32 +67,65 @@ def _redacted(command: list[str]) -> str:
     return " ".join(_DSN_PASSWORD.sub(r"\g<scheme>***@", part) for part in command)
 
 
+def format_duration(seconds: float) -> str:
+    """'1h 05m', '4m 09s' or '12s'."""
+    minutes, seconds = divmod(round(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
 def _run(command: list[str], *, description: str) -> None:
-    """Run a subprocess, streaming its output into the log."""
+    """Run a subprocess, logging its output line by line as it arrives.
+
+    An import runs for hours, so its output has to reach the log while it
+    runs, not once it exits. Both streams are merged: osm2pgsql and osmium
+    write their progress to stderr even on success.
+    """
     logger.info("%s: %s", description, _redacted(command))
+    started = time.monotonic()
+    tail = deque(maxlen=_OUTPUT_TAIL_LINES)
+    last_progress = None
     try:
-        process = subprocess.run(  # noqa: S603
+        # Text mode reads osm2pgsql's carriage-return progress updates as lines.
+        process = subprocess.Popen(  # noqa: S603
             command,
-            check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
         )
     except FileNotFoundError as error:
         msg = f"{command[0]} is not installed - is this the osmworker container?"
         raise OsmPipelineError(msg) from error
-    except subprocess.CalledProcessError as error:
-        logger.error(  # noqa: TRY400
-            "%s failed (exit %s):\n%s",
-            description,
-            error.returncode,
-            error.stderr,
-        )
-        msg = f"{description} failed with exit code {error.returncode}"
-        raise OsmPipelineError(msg) from error
 
-    if process.stderr:
-        # osm2pgsql writes its progress to stderr even on success.
-        logger.info("%s output:\n%s", description, process.stderr.strip())
+    with process:
+        for raw in process.stdout:
+            line = raw.strip()
+            if not line:
+                continue
+            tail.append(line)
+            if _PROGRESS_LINE.search(line):
+                now = time.monotonic()
+                if last_progress and now - last_progress < OSM2PGSQL_PROGRESS_SECONDS:
+                    continue
+                last_progress = now
+            logger.info("%s | %s", description, line)
+
+    elapsed = format_duration(time.monotonic() - started)
+    if process.returncode:
+        logger.error(
+            "%s failed (exit %s) after %s; last output:\n%s",
+            description,
+            process.returncode,
+            elapsed,
+            "\n".join(tail),
+        )
+        msg = f"{description} failed with exit code {process.returncode}"
+        raise OsmPipelineError(msg)
+    logger.info("%s finished in %s", description, elapsed)
 
 
 def database_dsn() -> str:
@@ -108,6 +154,7 @@ def download_planet(*, url: str | None = None, destination: Path | None = None) 
 
     logger.info("Downloading %s to %s", url, destination)
     digest = hashlib.md5()  # noqa: S324  # MD5 is what planet.openstreetmap.org publishes
+    started = time.monotonic()
 
     with tempfile.NamedTemporaryFile(
         dir=destination.parent,
@@ -118,9 +165,17 @@ def download_planet(*, url: str | None = None, destination: Path | None = None) 
         try:
             with requests.get(url, stream=True, timeout=(30, 600)) as response:
                 response.raise_for_status()
+                total = int(response.headers.get("Content-Length") or 0)
+                received = 0
+                last_report = started
                 for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
                     temporary.write(chunk)
                     digest.update(chunk)
+                    received += len(chunk)
+                    now = time.monotonic()
+                    if now - last_report >= DOWNLOAD_PROGRESS_SECONDS:
+                        last_report = now
+                        _log_download_progress(received, total, now - started)
         except requests.RequestException as error:
             temporary_path.unlink(missing_ok=True)
             msg = f"Failed to download {url}"
@@ -136,12 +191,31 @@ def download_planet(*, url: str | None = None, destination: Path | None = None) 
         raise OsmPipelineError(msg)
 
     temporary_path.replace(destination)
+    elapsed = time.monotonic() - started
+    size = destination.stat().st_size
     logger.info(
-        "Downloaded %s (%.1f GB)",
+        "Downloaded %s (%.1f GB) in %s, %.1f MB/s",
         destination,
-        destination.stat().st_size / 1e9,
+        size / 1e9,
+        format_duration(elapsed),
+        size / 1e6 / max(elapsed, 1),
     )
     return destination
+
+
+def _log_download_progress(received: int, total: int, elapsed: float) -> None:
+    rate = received / max(elapsed, 1)
+    if total:
+        logger.info(
+            "Downloaded %.1f of %.1f GB (%d%%), %.1f MB/s, about %s left",
+            received / 1e9,
+            total / 1e9,
+            100 * received // total,
+            rate / 1e6,
+            format_duration((total - received) / max(rate, 1)),
+        )
+    else:
+        logger.info("Downloaded %.1f GB, %.1f MB/s", received / 1e9, rate / 1e6)
 
 
 def _fetch_expected_md5(url: str) -> str | None:
@@ -167,6 +241,8 @@ def filter_waterways(source: Path, destination: Path | None = None) -> Path:
         [
             "osmium",
             "tags-filter",
+            # Timestamped messages as each pass starts and ends.
+            "--verbose",
             "--overwrite",
             "--output",
             str(destination),
@@ -175,6 +251,12 @@ def filter_waterways(source: Path, destination: Path | None = None) -> Path:
             "r/type=waterway",
         ],
         description="osmium tags-filter",
+    )
+    logger.info(
+        "Filtered %s down to %s (%.2f GB)",
+        source.name,
+        destination.name,
+        destination.stat().st_size / 1e9,
     )
     return destination
 
@@ -261,6 +343,8 @@ def import_pbf(pbf: Path, *, schema: str) -> None:
             # --slim keeps the middle tables that make replication possible.
             "--slim",
             f"--cache={settings.OSM2PGSQL_CACHE_MB}",
+            # Not a terminal, so 'auto' would log no progress at all.
+            "--log-progress=true",
             *_osm2pgsql_db_args(),
             *_osm2pgsql_output_args(schema),
             str(pbf),
