@@ -5,6 +5,7 @@ from django.contrib.gis.geos import LineString
 from rest_framework.test import APIRequestFactory
 
 from closest_river.rivers.api.views import ClosestRiver
+from closest_river.rivers.api.views import RiverGeo
 from closest_river.rivers.api.views import RiverSectionPopupInfo
 from closest_river.rivers.tests.factories import RiverFactory
 from closest_river.rivers.tests.factories import RiverSectionFactory
@@ -79,6 +80,7 @@ def test_any_waterway_lets_a_nearer_stream_win():
 
 
 def test_reports_whether_the_nearest_stretch_is_intermittent():
+    """A way in no relation has only its own tags to go on."""
     RiverSectionFactory(
         osm_way_id=800007,
         tags={"waterway": "river", "intermittent": "yes"},
@@ -87,6 +89,33 @@ def test_reports_whether_the_nearest_stretch_is_intermittent():
     response = _closest()
 
     assert response.status_code == 200
+    assert response.data["intermittent"] is True
+
+
+def test_a_member_reports_its_rivers_verdict_not_its_own():
+    """The card must agree with the map, which draws a river all one way."""
+    river = RiverFactory()
+    RiverSectionFactory(
+        osm_way_id=800008,
+        river=river,
+        tags={"waterway": "river", "intermittent": "yes"},
+    )
+    for osm_way_id in (800050, 800051):
+        RiverSectionFactory(osm_way_id=osm_way_id, river=river)
+
+    response = _closest()
+
+    assert response.data["section"]["osm_way_id"] == 800008
+    assert response.data["intermittent"] is False
+
+
+def test_river_geometry_carries_the_rivers_verdict():
+    river = RiverFactory(tags={"type": "waterway", "intermittent": "yes"})
+    RiverSectionFactory(river=river)
+    request = APIRequestFactory().get("/")
+
+    response = RiverGeo.as_view()(request, osm_id=river.osm_id)
+
     assert response.data["intermittent"] is True
 
 

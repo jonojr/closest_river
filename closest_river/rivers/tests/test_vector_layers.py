@@ -84,8 +84,9 @@ def test_cached_zooms_read_the_generalised_tile_table():
 def test_uncached_zooms_read_the_canonical_table():
     sql = RiverSectionVectorLayer()._full_detail_sql()
 
-    assert "waterway_section" in sql
-    assert "waterway_tile" not in sql
+    assert 'FROM "osm"."waterway_section"' in sql
+    # Only joined, for the intermittent flag; see the test below.
+    assert 'FROM "osm"."waterway_tile"' not in sql
 
 
 def test_geometry_is_snapped_to_the_pixel_grid_at_every_zoom():
@@ -233,9 +234,19 @@ def test_intermittent_reaches_the_rendered_tile(zoom):
             srid=4326,
         ),
     )
+    _tile_row(800010, "stream", intermittent=True)
     tile = mercantile.tile(SEED_LON, SEED_LAT, zoom)
 
     rendered = StreamSectionVectorLayer().get_tile(tile.x, tile.y, zoom)
 
     # MVT stores property names verbatim in the layer's key table.
     assert b"intermittent" in rendered
+
+
+def test_full_detail_takes_the_flag_from_the_tile_table_not_the_tags():
+    """For a relation member the flag is its river's verdict, which only
+    waterway_tile holds; the way's own tags would break the river up again."""
+    layer = RiverSectionVectorLayer()
+
+    assert "waterway_tile" in layer._full_detail_sql()
+    assert "tags" not in layer._full_detail_sql()

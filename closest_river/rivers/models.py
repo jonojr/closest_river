@@ -32,6 +32,15 @@ INTERMITTENT_SECTIONS = Q(tags__intermittent="yes") | Q(
 )
 
 
+def intermittent_tags_sql(tags: str = "tags") -> str:
+    """is_intermittent() as SQL, over the jsonb column `tags`."""
+    seasonal = ", ".join(f"'{value}'" for value in SEASONAL_VALUES)
+    return (
+        f"COALESCE({tags}->>'intermittent' = 'yes' "
+        f"OR {tags}->>'seasonal' IN ({seasonal}), false)"
+    )
+
+
 class SyncState(models.Model):
     """Singleton row tracking the state of the OSM pipeline.
 
@@ -125,10 +134,15 @@ class River(models.Model):
         return f"{self.name} ({self.osm_id})" if self.name else str(self.osm_id)
 
     def is_mostly_intermittent(self) -> bool:
-        """Whether to describe the river as a whole as intermittent.
+        """Whether to describe and draw the river as a whole as intermittent.
 
         The relation is often untagged even when nearly every member way is
         (Cooper Creek: 299 of 308 sections), so fall back to the majority.
+
+        Every section takes this verdict on the map, whatever its own tags say:
+        drawn way by way, a mostly permanent river breaks up into dashes
+        wherever a stretch happens to be tagged. Mirrored in SQL by
+        osm_pipeline.apply_river_intermittency(); keep the two in step.
         """
         if is_intermittent(self.tags):
             return True
@@ -190,8 +204,12 @@ class WaterwayTile(models.Model):
 
     osm_way_id = models.BigIntegerField(primary_key=True)
     waterway = models.TextField()
-    # See is_intermittent(). Stored here because the cached zooms must never
-    # read waterway_section, where the tags live.
+    # Whether the map draws this way as intermittent: its river's verdict
+    # (River.is_mostly_intermittent) for a relation member, otherwise
+    # is_intermittent() of its own tags. Stored here because the cached zooms
+    # must never read waterway_section, where the tags live. waterways.lua
+    # writes the way's own value; osm_pipeline.apply_river_intermittency()
+    # then overwrites it for relation members.
     intermittent = models.BooleanField(default=False)
     geometry = LineStringField(srid=3857)
 

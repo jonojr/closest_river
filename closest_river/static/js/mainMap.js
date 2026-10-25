@@ -58,8 +58,8 @@ const anyWaterway = document.querySelector('#any-waterway');
 
 let lastPosition = null;
 
-function setSelection({ river, line }) {
-  setRiver(river);
+function setSelection({ river, intermittent, line }) {
+  setRiver(river, { intermittent });
   lineToRiver = line;
   map.getSource('line_to_river')?.setData(line);
 }
@@ -147,6 +147,7 @@ function mapPosition(latitude, longitude) {
 
       setSelection({
         river: data.geometry ? JSON.parse(data.geometry) : EMPTY,
+        intermittent: data.intermittent,
         line: {
           type: 'Feature',
           properties: {},

@@ -162,7 +162,11 @@ tables.tile = osm2pgsql.define_table({
     columns = {
         { column = 'waterway', type = 'text', not_null = true },
         -- See is_intermittent(). Lives here as a column because the cached
-        -- zooms must never read waterway_section, where the tags are.
+        -- zooms must never read waterway_section, where the tags are. This is
+        -- only the way's own value: for a member of a river relation the
+        -- pipeline replaces it with the river's after every import and sync
+        -- (rivers/osm_pipeline.py:apply_river_intermittency), which cannot be
+        -- worked out here because an append only sees the ways that changed.
         { column = 'intermittent', type = 'bool', not_null = true },
         {
             column = 'geometry',

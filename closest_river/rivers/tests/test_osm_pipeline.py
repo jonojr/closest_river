@@ -19,6 +19,7 @@ import pytest
 from django.conf import settings
 from django.db import connection
 
+from closest_river.rivers import osm_pipeline
 from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
 
 pytestmark = [
@@ -213,6 +214,16 @@ def test_the_tile_table_flags_intermittent_waterways(imported):
     rows = dict(_query("SELECT osm_way_id, intermittent FROM {s}.waterway_tile"))
 
     assert rows == {100: False, 101: True, 102: True, 104: False}
+
+
+def test_members_take_their_rivers_verdict_after_import(imported):
+    """Way 102 is the only intermittent one of relation 200's three, so it is
+    drawn permanent like the rest; stream 101 belongs to no relation."""
+    restyled = osm_pipeline.apply_river_intermittency(SCHEMA, expire=False)
+
+    rows = dict(_query("SELECT osm_way_id, intermittent FROM {s}.waterway_tile"))
+    assert restyled == 1
+    assert rows == {100: False, 101: True, 102: False, 104: False}
 
 
 def test_tile_geometry_is_in_web_mercator(imported):

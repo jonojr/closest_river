@@ -73,20 +73,12 @@ export const EMPTY = { type: 'FeatureCollection', features: [] };
 
 // Waterways that are dry for part of the year, drawn paler, dashed and without
 // animated flow. Most of inland Australia is like this, and drawing it as
-// permanent water is misleading. The tiles carry a precomputed flag; the
-// highlighted river's GeoJSON has the raw tags, so it is tested the same way
-// rivers/models.py:is_intermittent() does.
+// permanent water is misleading. A river is drawn one way along its whole
+// length, by the verdict of rivers/models.py:River.is_mostly_intermittent():
+// the tiles carry it precomputed, and setRiver stamps it on the highlighted
+// river's sections.
 const INTERMITTENT = ['to-boolean', ['get', 'intermittent']];
 const PERENNIAL = ['!', INTERMITTENT];
-const INTERMITTENT_TAGS = [
-  'any',
-  ['==', ['get', 'intermittent', ['get', 'tags']], 'yes'],
-  [
-    'in',
-    ['get', 'seasonal', ['get', 'tags']],
-    ['literal', ['yes', 'wet_season', 'wet']],
-  ],
-];
 
 // Solid when zoomed out, where dashes on a hairline just look broken; dashed
 // once lines are wide enough for the pattern to read.
@@ -513,7 +505,7 @@ export function createRiverMap({
         id: 'river',
         type: 'line',
         source: 'river',
-        filter: ['!', INTERMITTENT_TAGS],
+        filter: PERENNIAL,
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
@@ -525,13 +517,13 @@ export function createRiverMap({
       },
       firstSymbolId,
     );
-    // Stretches that are often dry: same weight, dashed over the casing.
+    // A river that is often dry: same weight, dashed over the casing.
     map.addLayer(
       {
         id: 'river-intermittent',
         type: 'line',
         source: 'river',
-        filter: INTERMITTENT_TAGS,
+        filter: INTERMITTENT,
         layout: {
           'line-join': 'round',
         },
@@ -550,7 +542,7 @@ export function createRiverMap({
         id: 'river-flow',
         type: 'line',
         source: 'river',
-        filter: ['!', INTERMITTENT_TAGS],
+        filter: PERENNIAL,
         layout: {
           'line-join': 'round',
         },
@@ -733,9 +725,16 @@ export function createRiverMap({
     map,
     popup,
     flow,
-    setRiver(geojson) {
-      river = geojson;
-      map.getSource('river')?.setData(geojson);
+    // `intermittent` is the river's verdict, applied to every section.
+    setRiver(geojson, { intermittent = false } = {}) {
+      river = {
+        ...geojson,
+        features: geojson.features.map((feature) => ({
+          ...feature,
+          properties: { ...feature.properties, intermittent },
+        })),
+      };
+      map.getSource('river')?.setData(river);
     },
   };
 }

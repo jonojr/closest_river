@@ -26,6 +26,11 @@ import requests
 from django.conf import settings
 from django.db import connection
 
+from closest_river.rivers.models import intermittent_tags_sql
+from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
+from closest_river.rivers.vector_layers import TILE_BUFFER
+from closest_river.rivers.vector_layers import TILE_EXTENT
+
 logger = logging.getLogger(__name__)
 
 # The replication script has a /usr/bin/python3 shebang and needs pyosmium 3.x
@@ -445,6 +450,112 @@ def analyze_schema(schema: str) -> None:
         for table in tables:
             cursor.execute(f'ANALYZE "{schema}"."{table}"')
     logger.info("Analyzed %s table(s) in schema %s", len(tables), schema)
+
+
+# Half the width of the Web Mercator world, in metres.
+MERCATOR_HALF_WORLD_M = 20037508.342789244
+
+
+def _tiles_covering_sql(geometry: str) -> str:
+    """(zoom, x, y) of every cached tile a 3857 geometry is drawn in.
+
+    The same tiles osm2pgsql's expire output would list, from z1 (it cannot
+    emit z0, which tile_cache always evicts) to the highest cached zoom. The
+    bounding box is widened by the tile buffer, because a line just outside a
+    tile is still drawn in its buffer.
+    """
+    half = MERCATOR_HALF_WORLD_M
+    size = f"({2 * half} / (1 << z))"
+    pad = TILE_BUFFER / TILE_EXTENT
+    last = "((1 << z) - 1)"
+
+    def tile_range(low: str, high: str) -> str:
+        return (
+            f"generate_series(GREATEST(floor({low} / {size} - {pad})::int, 0), "
+            f"LEAST(floor({high} / {size} + {pad})::int, {last}))"
+        )
+
+    x_range = tile_range(
+        f"(ST_XMin({geometry}) + {half})",
+        f"(ST_XMax({geometry}) + {half})",
+    )
+    y_range = tile_range(
+        f"({half} - ST_YMax({geometry}))",
+        f"({half} - ST_YMin({geometry}))",
+    )
+    return f"""
+        SELECT DISTINCT z, x, y
+        FROM flipped,
+             generate_series(1, {CACHE_BELOW_ZOOM_LEVEL - 1}) AS z,
+             LATERAL {x_range} AS x,
+             LATERAL {y_range} AS y
+    """  # noqa: S608
+
+
+def apply_river_intermittency(schema: str, *, expire: bool) -> int:
+    """Draw every member of a river relation the way its river is drawn.
+
+    Tagged way by way, a mostly permanent river breaks up into dashes wherever
+    a stretch happens to be intermittent. So each member's
+    waterway_tile.intermittent is replaced with its river's verdict, which is
+    River.is_mostly_intermittent() in SQL: the relation's own tag, or more
+    than half its sections.
+
+    This cannot be done in waterways.lua. The verdict depends on every member
+    way, and an append only processes the ones that changed. So it is reapplied
+    in full after every import and sync: waterways.lua writes each way's own
+    value, and this corrects the members. Only rows whose value changes are
+    written.
+
+    With ``expire``, the tiles of every way that changed are added to the
+    expire table for the sync to evict: retagging one way can restyle a whole
+    river, far beyond anything osm2pgsql expired. Not wanted after a full
+    import, which strands the whole cache anyway.
+
+    Returns the number of ways restyled.
+    """
+    tables = {
+        name: f'"{schema}"."{name}"'
+        for name in ("waterway_section", "waterway_relation", "waterway_tile")
+    }
+    expire_cte = (
+        f""",
+        expired AS (
+            INSERT INTO "{schema}".tile_expire (zoom, x, y)
+            {_tiles_covering_sql("geometry")}
+            ON CONFLICT DO NOTHING
+        )"""
+        if expire
+        else ""
+    )
+    sql = f"""
+        WITH verdict AS (
+            SELECT s.river_osm_id,
+                   bool_or({intermittent_tags_sql("r.tags")})
+                   OR count(*) FILTER (WHERE {intermittent_tags_sql("s.tags")})
+                      * 2 > count(*) AS intermittent
+            FROM {tables["waterway_section"]} s
+            -- Inner, so a section whose relation is missing keeps its own
+            -- value, as it does on the result card.
+            JOIN {tables["waterway_relation"]} r ON r.osm_id = s.river_osm_id
+            GROUP BY s.river_osm_id
+        ),
+        flipped AS (
+            UPDATE {tables["waterway_tile"]} t
+            SET intermittent = v.intermittent
+            FROM {tables["waterway_section"]} s
+            JOIN verdict v ON v.river_osm_id = s.river_osm_id
+            WHERE t.osm_way_id = s.osm_way_id
+              AND t.intermittent <> v.intermittent
+            RETURNING t.geometry
+        ){expire_cte}
+        SELECT count(*) FROM flipped
+    """  # noqa: S608
+    with connection.cursor() as cursor:
+        cursor.execute(sql)
+        restyled = cursor.fetchone()[0]
+    logger.info("Restyled %s way(s) in %s to match their river", restyled, schema)
+    return restyled
 
 
 def free_space(path: Path | None = None) -> int:

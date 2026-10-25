@@ -19,7 +19,7 @@ fetch(`/rivers/geometry/${osmId}/`)
   .then((response) => response.json())
   .then((data) => {
     const geojson = JSON.parse(data.geometry);
-    setRiver(geojson);
+    setRiver(geojson, { intermittent: data.intermittent });
     flow.start();
 
     // Sections are LineStrings, or MultiLineStrings where a way was split.
