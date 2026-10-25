@@ -7,31 +7,12 @@ import '@mapbox-controls/ruler/src/index.css';
 
 import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
+import { BASEMAPS } from './basemapStyles';
 import { animateFlow, chevronImage } from './flowDirection';
 import { MapLayersControl } from './MapLayersControl';
 
-// Background maps, as MapTiler style ids for each theme. tone says which
-// river palette reads against the map; it follows the theme unless the map
-// is the same either way.
-// Listed in the order the layers control shows them.
-const BASEMAPS = {
-  terrain: { label: 'Terrain', light: 'outdoor-v2', dark: 'outdoor-v2-dark' },
-  streets: { label: 'Streets', light: 'streets-v2', dark: 'streets-v2-dark' },
-  // Imagery is dark whichever theme is on, so draw rivers in the dark palette.
-  satellite: {
-    label: 'Satellite',
-    light: 'hybrid',
-    dark: 'hybrid',
-    tone: 'dark',
-  },
-  minimal: { label: 'Minimal', light: 'dataviz', dark: 'dataviz-dark' },
-};
 const DEFAULT_BASEMAP = 'terrain';
 const BASEMAP_STORAGE_KEY = 'basemap';
-
-function styleUrl(styleId) {
-  return `https://api.maptiler.com/maps/${styleId}/style.json?key=${process.env.MAPTILER_API_KEY}`;
-}
 
 function storedBasemap() {
   try {
@@ -229,8 +210,8 @@ export function createRiverMap({
   extraPopups = {},
 } = {}) {
   let basemap = storedBasemap();
-  const basemapStyle = () => styleUrl(BASEMAPS[basemap][currentTheme()]);
   const palette = () => PALETTES[BASEMAPS[basemap].tone ?? currentTheme()];
+  const basemapStyle = () => BASEMAPS[basemap].style(currentTheme(), palette());
 
   const map = new maplibregl.Map({
     container,
@@ -256,10 +237,10 @@ export function createRiverMap({
   function addRiverLayers() {
     const colours = palette();
 
-    // Insert our layers below the labels so place names stay on top. That's
-    // the run of symbol layers at the end of the style, not simply the first
-    // symbol layer: Terrain (outdoor-v2) has contour labels early on, under
-    // its water and land fills, which would bury the rivers.
+    // Insert our layers below the labels so place names stay on top: the run
+    // of symbol layers at the end of the style. basemapStyles.js keeps every
+    // label there, Terrain's contour labels included; anything symbol-typed
+    // earlier in a style sits under its fills and would bury the rivers.
     const layers = map.getStyle().layers;
     let labelsStart = layers.length;
     while (labelsStart > 0 && layers[labelsStart - 1].type === 'symbol') {
@@ -574,64 +555,6 @@ export function createRiverMap({
     );
 
     addExtraLayers(map, colours, firstSymbolId);
-    addRiverLabels(colours);
-  }
-
-  // River names, drawn from the basemap's own OpenMapTiles data but styled
-  // here. The basemaps label rivers inconsistently: Terrain and Streets only
-  // from zoom 13, small and pale; Satellite and Minimal not at all. Ours replace
-  // theirs, so hide those. On top of everything, so the names stay readable
-  // over our lines.
-  function addRiverLabels(colours) {
-    const source = 'maptiler_planet';
-    if (!map.getSource(source)) {
-      return;
-    }
-    for (const layer of map.getStyle().layers) {
-      if (layer.type === 'symbol' && layer['source-layer'] === 'waterway') {
-        map.setLayoutProperty(layer.id, 'visibility', 'none');
-      }
-    }
-    // Canals with rivers: plenty of urban creeks are concrete channels tagged
-    // as canals, and our map draws them as the rivers they belong to. The
-    // smaller classes only once zoomed in, where there is room to name them.
-    for (const [id, classes, minzoom] of [
-      ['river-labels', ['river', 'canal'], 0],
-      ['stream-labels', ['stream', 'drain', 'ditch'], 13],
-    ]) {
-      map.addLayer({
-        id,
-        type: 'symbol',
-        source,
-        'source-layer': 'waterway',
-        filter: ['in', ['get', 'class'], ['literal', classes]],
-        minzoom,
-        layout: {
-          'symbol-placement': 'line',
-          'symbol-spacing': 400,
-          'text-field': ['get', 'name'],
-          // On MapTiler's glyph server whichever basemap is showing.
-          'text-font': ['Noto Sans Italic'],
-          // Zoomed out, the basemap carries only a few river names, on short
-          // winding pieces of line. Small, tight text that may follow sharp
-          // bends is what gets most of them placed at all.
-          'text-size': zoomRamp([
-            [11, 11],
-            [15, 15],
-          ]),
-          'text-letter-spacing': zoomRamp([
-            [12, 0],
-            [14, 0.05],
-          ]),
-          'text-max-angle': 90,
-        },
-        paint: {
-          'text-color': colours.label,
-          'text-halo-color': colours.labelHalo,
-          'text-halo-width': 1.75,
-        },
-      });
-    }
   }
 
   map.on('style.load', addRiverLayers);

@@ -17,6 +17,11 @@ module.exports = merge(commonConfig, {
   devServer: {
     port: 3000,
     proxy: [
+      // The self-hosted basemap, served by the tiles container.
+      {
+        context: ['/tiles'],
+        target: 'http://tiles:80',
+      },
       {
         context: ['/'],
         target: 'http://django:8000',

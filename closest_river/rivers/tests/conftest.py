@@ -13,6 +13,7 @@ osm2pgsql is not installed.
 import pytest
 from django.core.cache import cache
 from django.db import connection
+from django.db.backends.base.creation import TEST_DATABASE_PREFIX
 
 OSM_SCHEMA_DDL = """
 CREATE SCHEMA IF NOT EXISTS osm;
@@ -86,6 +87,13 @@ def _create_osm_tables(django_db_setup, django_db_blocker):
     to the DDL below without anyone having to remember to drop their test
     database.
     """
+    # pytest-django only creates the test database when a collected test uses
+    # one. Run nothing but database-free tests (test_basemap.py alone, say)
+    # and the connection is still the development database, where the DROP
+    # below destroyed the real waterway tables. No test needs them then, so
+    # leave the database alone.
+    if not connection.settings_dict["NAME"].startswith(TEST_DATABASE_PREFIX):
+        return
     with django_db_blocker.unblock(), connection.cursor() as cursor:
         cursor.execute("CREATE SCHEMA IF NOT EXISTS osm")
         tables = ", ".join(f"osm.{table}" for table in OSM_TABLES)

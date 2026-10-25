@@ -12,3 +12,11 @@ REDIS_URL=redis://redis:6379/0
 # Flower
 CELERY_FLOWER_USER=eSxoVbQZElGKedeTIHnnrcAmNCCjxorq
 CELERY_FLOWER_PASSWORD=liX5nm9qrwJn0Hgnj7QzZb4n2vhaNhrCvz9pJuKEMftwSrYhA9V093S6V0ywR8P5
+
+# Self-hosted basemap
+# ------------------------------------------------------------------------------
+# Inside the checkout, so the tiles container can serve it; gitignored.
+BASEMAP_DIR=/app/basemap
+# Australia: about 2 GB of tiles and 2 GB of terrain, against 230 GB for the
+# planet.
+BASEMAP_BBOX=112.9,-43.9,154.0,-9.0

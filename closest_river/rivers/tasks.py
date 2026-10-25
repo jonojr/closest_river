@@ -13,6 +13,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from closest_river.rivers import basemap
 from closest_river.rivers import osm_pipeline
 from closest_river.rivers.models import SyncState
 from closest_river.rivers.tile_cache import bump_data_version
@@ -188,3 +189,19 @@ def full_import_osm_waterways(*, download: bool = True) -> dict:
         version,
     )
     return {"data_version": version}
+
+
+@app.task(
+    name="closest_river.rivers.tasks.fetch_basemap",
+    # A planet extract is a few hours of range requests; a regional one,
+    # minutes.
+    time_limit=24 * 60 * 60,
+    soft_time_limit=23 * 60 * 60,
+)
+def fetch_basemap(*, terrain: bool = True, assets: bool = True) -> None:
+    """Download the self-hosted basemap into BASEMAP_DIR (see rivers/basemap.py).
+
+    Touches no database tables, so it does not take the pipeline lock; the osm
+    queue's concurrency of 1 already keeps it from running beside an import.
+    """
+    basemap.fetch_all(terrain=terrain, assets=assets)

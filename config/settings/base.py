@@ -359,6 +359,28 @@ OSM2PGSQL_STYLE = env(
 OSM2PGSQL_CACHE_MB = env.int("OSM2PGSQL_CACHE_MB", default=2000)
 OSM_MAX_DIFF_SIZE_MB = env.int("OSM_MAX_DIFF_SIZE_MB", default=500)
 
+# Self-hosted basemap
+# ------------------------------------------------------------------------------
+# Where rivers/basemap.py writes the basemap and terrain archives, fonts and
+# sprites, and where nginx serves them from as /tiles/. Over 200 GB for the
+# planet; in production a bind mount onto the large disk.
+BASEMAP_DIR = env("BASEMAP_DIR", default="/basemap")
+# min_lon,min_lat,max_lon,max_lat to cut both archives down to, or empty for
+# the whole planet. Local development uses Australia.
+BASEMAP_BBOX = env("BASEMAP_BBOX", default="")
+# The Protomaps builds go to zoom 15; the map overzooms past it.
+BASEMAP_MAXZOOM = env.int("BASEMAP_MAXZOOM", default=15)
+# Mapterhorn's tiles are 512 px, so zoom 11 already resolves its global 30 m
+# data; each zoom past it roughly triples the size (92 GB for the planet at
+# 11, 356 GB at 12). Keep in step with TERRAIN_MAXZOOM in basemapStyles.js.
+BASEMAP_TERRAIN_MAXZOOM = env.int("BASEMAP_TERRAIN_MAXZOOM", default=11)
+# protomaps/basemaps-assets commit the fonts and sprites come from: the
+# sprites/v4 set that goes with @protomaps/basemaps 5.
+BASEMAP_ASSETS_REF = env(
+    "BASEMAP_ASSETS_REF",
+    default="028c18f713baecad011301ff7a69acc39bcc2ae7",
+)
+
 # django-allauth
 # ------------------------------------------------------------------------------
 ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
