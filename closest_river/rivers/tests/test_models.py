@@ -12,6 +12,7 @@ from django.db import transaction
 
 from closest_river.rivers.models import RiverMembership
 from closest_river.rivers.models import is_intermittent
+from closest_river.rivers.models import unnamed_waterway
 from closest_river.rivers.tests.factories import RiverFactory
 from closest_river.rivers.tests.factories import RiverMembershipFactory
 from closest_river.rivers.tests.factories import RiverSectionFactory
@@ -98,3 +99,36 @@ def test_a_tagged_relation_is_intermittent_whatever_its_sections_say():
     RiverSectionFactory(river=river, tags={})
 
     assert river.is_mostly_intermittent()
+
+
+@pytest.mark.parametrize(
+    ("waterway", "expected"),
+    [
+        ("stream", "Unnamed stream"),
+        ("tidal_channel", "Unnamed tidal channel"),
+        (None, "Unnamed waterway"),
+    ],
+)
+def test_unnamed_waterway(waterway, expected):
+    assert unnamed_waterway(waterway) == expected
+
+
+def test_a_section_is_named_by_its_own_tag_not_its_drawn_class():
+    """A drain promoted into a river is drawn as a river, but is a drain."""
+    section = RiverSectionFactory(
+        name=None,
+        waterway="river",
+        tags={"waterway": "drain"},
+    )
+
+    assert section.display_name == "Unnamed drain"
+
+
+def test_a_named_section_keeps_its_name():
+    assert RiverSectionFactory(name="Merri Creek").display_name == "Merri Creek"
+
+
+def test_a_river_with_no_name_or_type_is_a_waterway():
+    river = RiverFactory(name=None, tags={"type": "waterway"})
+
+    assert river.display_name == "Unnamed waterway"

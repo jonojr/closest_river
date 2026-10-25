@@ -4,7 +4,7 @@
 {% load render_bundle from webpack_loader %}
 
 {% block title %}
-  {{ river.name|default:"Unnamed river" }} · My closest river
+  {{ river.display_name }} · My closest river
 {% endblock title %}
 {% block css %}
   {{ block.super }}
@@ -22,7 +22,7 @@
     <div id="map" data-osm-id="{{ river.osm_id }}"></div>
     <section class="map-panel river-panel" aria-labelledby="river-title">
       <p class="river-card__eyebrow">River</p>
-      <h1 id="river-title" class="river-panel__name">{{ river.name|default:"Unnamed river" }}</h1>
+      <h1 id="river-title" class="river-panel__name">{{ river.display_name }}</h1>
       {% if river.is_mostly_intermittent %}
         <p class="river-card__badge">
           <i class="bi bi-droplet-half" aria-hidden="true"></i>

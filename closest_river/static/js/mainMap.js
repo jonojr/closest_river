@@ -4,16 +4,45 @@ import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
 import { EMPTY, createRiverMap, popupNote } from './riverMap';
 
+const finder = document.querySelector('#finder');
+const finderToggle = document.querySelector('#finder-toggle');
+const riverCard = document.querySelector('#river-card');
+
 // The finder and result panels float over the map: down the left on wider
 // screens, top and bottom on phones. Pad the camera so results land in the
-// part of the map that is still visible.
+// part of the map that is still visible. On phones the panels change height
+// (the finder collapses, the card depends on what it shows), so measure them.
 const wideScreen = window.matchMedia('(min-width: 768px)');
 function cameraPadding() {
   'use strict';
-  return wideScreen.matches
-    ? { top: 40, right: 70, bottom: 40, left: 380 }
-    : { top: 260, right: 60, bottom: 290, left: 30 };
+  if (wideScreen.matches) {
+    return { top: 40, right: 70, bottom: 40, left: 380 };
+  }
+  const mapBox = document.querySelector('#map').getBoundingClientRect();
+  return {
+    top: finder.getBoundingClientRect().bottom - mapBox.top + 20,
+    right: 60,
+    bottom: riverCard.hidden
+      ? 40
+      : mapBox.bottom - riverCard.getBoundingClientRect().top + 20,
+    left: 30,
+  };
 }
+
+// On phones the finder folds away to a single search button once there is a
+// result, and opens again from it.
+function setFinderCollapsed(collapsed) {
+  'use strict';
+  const collapse = collapsed && !wideScreen.matches;
+  finder.classList.toggle('finder--collapsed', collapse);
+  finderToggle.setAttribute('aria-expanded', String(!collapse));
+}
+
+finderToggle.addEventListener('click', () => {
+  'use strict';
+  setFinderCollapsed(false);
+  finder.querySelector('.maplibregl-ctrl-geocoder--input')?.focus();
+});
 
 // The dotted line from the searched point to the river. Kept outside the map
 // so it survives a basemap swap, like the highlighted river.
@@ -52,7 +81,6 @@ const marker = new maplibregl.Marker({ color: '#0b63c5' });
 // Find nearest //
 /////////////////
 
-const riverCard = document.querySelector('#river-card');
 const status = document.querySelector('#status');
 const anyWaterway = document.querySelector('#any-waterway');
 
@@ -68,6 +96,7 @@ function setSelection({ river, intermittent, line }) {
 function clearSelection() {
   'use strict';
   riverCard.hidden = true;
+  setFinderCollapsed(false);
   setSelection({ river: EMPTY, line: EMPTY });
   marker.remove();
   popup.remove();
@@ -124,8 +153,7 @@ function mapPosition(latitude, longitude) {
       const feature = data.section.river ? data.river : data.section;
 
       eyebrow.textContent = `Your closest ${noun}`;
-      name.textContent =
-        feature?.name || `Unnamed ${data.section.waterway || 'waterway'}`;
+      name.textContent = data.name;
       if (data.section.river) {
         name.href = `/rivers/${data.river.osm_id}/`;
       } else {
@@ -144,6 +172,8 @@ function mapPosition(latitude, longitude) {
       distanceToClosestRiver = data.distance;
       status.textContent = '';
       riverCard.hidden = false;
+      // Before fitting the camera, which measures what is left uncovered.
+      setFinderCollapsed(true);
 
       setSelection({
         river: data.geometry ? JSON.parse(data.geometry) : EMPTY,
@@ -218,8 +248,6 @@ const geocoderApi = {
         };
         features.push(point);
       }
-      const point = features[0].geometry.coordinates;
-      mapPosition(point[1], point[0]);
     } catch (e) {
       console.error(`Failed to forwardGeocode with error: ${e}`);
     }
@@ -229,17 +257,24 @@ const geocoderApi = {
     };
   },
 };
+// mapPosition moves the camera itself, so the geocoder doesn't.
 const geocoder = new MaplibreGeocoder(geocoderApi, {
   maplibregl,
   placeholder: 'Search for a place',
-  zoom: 12,
-  flyTo: {
-    zoom: 12,
-    padding: cameraPadding(),
-    essential: true,
-  },
+  flyTo: false,
+  marker: false,
 });
 document.querySelector('#geocoder').appendChild(geocoder.onAdd(map));
+
+// Search once a place is chosen (a suggestion, or Enter for the first), not
+// while typing: on phones the finder folds away on a result, and that would
+// pull the suggestions out from under the user. The geocoder refocuses its
+// input after a pick; let go of it so the phone keyboard closes too.
+geocoder.on('result', ({ result }) => {
+  finder.querySelector('.maplibregl-ctrl-geocoder--input')?.blur();
+  const [longitude, latitude] = result.center;
+  mapPosition(latitude, longitude);
+});
 
 function geolocateAndFindRiver() {
   'use strict';

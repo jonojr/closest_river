@@ -41,6 +41,13 @@ def intermittent_tags_sql(tags: str = "tags") -> str:
     )
 
 
+def unnamed_waterway(waterway: str | None) -> str:
+    """What to call a waterway with no name: its OSM waterway type if it has
+    one ("Unnamed drain"), otherwise just "Unnamed waterway"."""
+    noun = waterway.replace("_", " ") if waterway else "waterway"
+    return f"Unnamed {noun}"
+
+
 class SyncState(models.Model):
     """Singleton row tracking the state of the OSM pipeline.
 
@@ -116,6 +123,12 @@ class RiverSection(models.Model):
     def intermittent(self) -> bool:
         return is_intermittent(self.tags)
 
+    @property
+    def display_name(self) -> str:
+        # The literal tag, not the waterway column: a promoted drain is stored
+        # as its relation's class, but is still a drain.
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
+
 
 class River(models.Model):
     """An OSM type=waterway relation grouping many sections."""
@@ -132,6 +145,10 @@ class River(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.osm_id})" if self.name else str(self.osm_id)
+
+    @property
+    def display_name(self) -> str:
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
 
     def is_mostly_intermittent(self) -> bool:
         """Whether to describe and draw the river as a whole as intermittent.

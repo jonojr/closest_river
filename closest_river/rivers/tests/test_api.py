@@ -79,6 +79,48 @@ def test_any_waterway_lets_a_nearer_stream_win():
     assert response.data["section"]["osm_way_id"] == stream.osm_way_id
 
 
+@pytest.mark.parametrize(
+    ("waterway", "params"),
+    [("stream", {"waterway": "any"}), ("river", {})],
+)
+def test_unnamed_waterways_are_never_the_closest(waterway, params):
+    RiverSectionFactory(
+        osm_way_id=800009,
+        name=None,
+        waterway=waterway,
+        geometry=LineString((144.9101, -37.8101), (144.9102, -37.8102), srid=4326),
+    )
+    named = RiverSectionFactory(
+        osm_way_id=800010,
+        name="Big river",
+        geometry=LineString((145.6, -38.4), (145.7, -38.5), srid=4326),
+    )
+
+    response = _closest(**params)
+
+    assert response.data["section"]["osm_way_id"] == named.osm_way_id
+
+
+def test_an_unnamed_way_in_a_named_river_still_counts():
+    river = RiverFactory(name="Yarra")
+    member = RiverSectionFactory(
+        osm_way_id=800011,
+        name=None,
+        river=river,
+        geometry=LineString((144.9101, -37.8101), (144.9102, -37.8102), srid=4326),
+    )
+    RiverSectionFactory(
+        osm_way_id=800012,
+        name="Big river",
+        geometry=LineString((145.6, -38.4), (145.7, -38.5), srid=4326),
+    )
+
+    response = _closest()
+
+    assert response.data["section"]["osm_way_id"] == member.osm_way_id
+    assert response.data["name"] == "Yarra"
+
+
 def test_reports_whether_the_nearest_stretch_is_intermittent():
     """A way in no relation has only its own tags to go on."""
     RiverSectionFactory(
@@ -156,3 +198,19 @@ def test_popup_merges_river_tags_under_section_tags():
         response.data["Wikipedia"]["link"] == "https://en.wikipedia.org/wiki/en:Yarra"
     )
     assert response.data["boat"]["text"] == "yes"
+
+
+def test_popup_names_an_unnamed_way_by_its_type():
+    section = RiverSectionFactory(
+        osm_way_id=800013,
+        name=None,
+        waterway="stream",
+        tags={"waterway": "stream"},
+    )
+
+    response = RiverSectionPopupInfo.as_view()(
+        APIRequestFactory().get("/"),
+        osm_way_id=section.osm_way_id,
+    )
+
+    assert response.data["Name"]["text"] == "Unnamed stream"

@@ -17,14 +17,27 @@
 {% block content %}
   <div class="map-shell">
     <div id="map"></div>
-    <section class="map-panel finder" aria-labelledby="finder-title">
+    <section id="finder" class="map-panel finder" aria-labelledby="finder-title">
+      <button id="finder-toggle"
+              class="btn finder__toggle"
+              type="button"
+              aria-label="Search again"
+              aria-controls="finder"
+              aria-expanded="true">
+        <i class="bi bi-search" aria-hidden="true"></i>
+      </button>
       <h1 id="finder-title" class="finder__title">What's my closest river?</h1>
       <p class="finder__lede">Use your location, or search for a place.</p>
-      <button id="find-closest-river" class="btn btn-primary w-100" type="button">
-        <i class="bi bi-crosshair me-2"></i>Use my location
-      </button>
-      <div class="finder__divider">or</div>
-      <div id="geocoder"></div>
+      <div class="finder__search">
+        <button id="find-closest-river"
+                class="btn btn-primary finder__locate"
+                type="button"
+                aria-label="Use my location">
+          <i class="bi bi-crosshair" aria-hidden="true"></i><span class="finder__locate-label">Use my location</span>
+        </button>
+        <div class="finder__divider">or</div>
+        <div id="geocoder"></div>
+      </div>
       <div class="form-check form-switch finder__option">
         <input class="form-check-input"
                type="checkbox"

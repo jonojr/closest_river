@@ -13,10 +13,10 @@ import { MapLayersControl } from './MapLayersControl';
 // Background maps, as MapTiler style ids for each theme. tone says which
 // river palette reads against the map; it follows the theme unless the map
 // is the same either way.
+// Listed in the order the layers control shows them.
 const BASEMAPS = {
-  minimal: { label: 'Minimal', light: 'dataviz', dark: 'dataviz-dark' },
-  streets: { label: 'Streets', light: 'streets-v2', dark: 'streets-v2-dark' },
   terrain: { label: 'Terrain', light: 'outdoor-v2', dark: 'outdoor-v2-dark' },
+  streets: { label: 'Streets', light: 'streets-v2', dark: 'streets-v2-dark' },
   // Imagery is dark whichever theme is on, so draw rivers in the dark palette.
   satellite: {
     label: 'Satellite',
@@ -24,8 +24,9 @@ const BASEMAPS = {
     dark: 'hybrid',
     tone: 'dark',
   },
+  minimal: { label: 'Minimal', light: 'dataviz', dark: 'dataviz-dark' },
 };
-const DEFAULT_BASEMAP = 'minimal';
+const DEFAULT_BASEMAP = 'terrain';
 const BASEMAP_STORAGE_KEY = 'basemap';
 
 function styleUrl(styleId) {
@@ -54,6 +55,8 @@ const PALETTES = {
     selectedArrowFill: '#ffffff',
     lineToRiver: '#334155',
     arrowOutline: '#ffffff',
+    label: '#0a3a82',
+    labelHalo: '#ffffff',
   },
   dark: {
     river: '#5aa9ff',
@@ -66,6 +69,8 @@ const PALETTES = {
     selectedArrowFill: '#0b1220',
     lineToRiver: '#cbd5e1',
     arrowOutline: '#0b1220',
+    label: '#9fd2ff',
+    labelHalo: '#0b1220',
   },
 };
 
@@ -569,6 +574,64 @@ export function createRiverMap({
     );
 
     addExtraLayers(map, colours, firstSymbolId);
+    addRiverLabels(colours);
+  }
+
+  // River names, drawn from the basemap's own OpenMapTiles data but styled
+  // here. The basemaps label rivers inconsistently: Terrain and Streets only
+  // from zoom 13, small and pale; Satellite and Minimal not at all. Ours replace
+  // theirs, so hide those. On top of everything, so the names stay readable
+  // over our lines.
+  function addRiverLabels(colours) {
+    const source = 'maptiler_planet';
+    if (!map.getSource(source)) {
+      return;
+    }
+    for (const layer of map.getStyle().layers) {
+      if (layer.type === 'symbol' && layer['source-layer'] === 'waterway') {
+        map.setLayoutProperty(layer.id, 'visibility', 'none');
+      }
+    }
+    // Canals with rivers: plenty of urban creeks are concrete channels tagged
+    // as canals, and our map draws them as the rivers they belong to. The
+    // smaller classes only once zoomed in, where there is room to name them.
+    for (const [id, classes, minzoom] of [
+      ['river-labels', ['river', 'canal'], 0],
+      ['stream-labels', ['stream', 'drain', 'ditch'], 13],
+    ]) {
+      map.addLayer({
+        id,
+        type: 'symbol',
+        source,
+        'source-layer': 'waterway',
+        filter: ['in', ['get', 'class'], ['literal', classes]],
+        minzoom,
+        layout: {
+          'symbol-placement': 'line',
+          'symbol-spacing': 400,
+          'text-field': ['get', 'name'],
+          // On MapTiler's glyph server whichever basemap is showing.
+          'text-font': ['Noto Sans Italic'],
+          // Zoomed out, the basemap carries only a few river names, on short
+          // winding pieces of line. Small, tight text that may follow sharp
+          // bends is what gets most of them placed at all.
+          'text-size': zoomRamp([
+            [11, 11],
+            [15, 15],
+          ]),
+          'text-letter-spacing': zoomRamp([
+            [12, 0],
+            [14, 0.05],
+          ]),
+          'text-max-angle': 90,
+        },
+        paint: {
+          'text-color': colours.label,
+          'text-halo-color': colours.labelHalo,
+          'text-halo-width': 1.75,
+        },
+      });
+    }
   }
 
   map.on('style.load', addRiverLayers);

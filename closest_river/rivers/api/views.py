@@ -3,6 +3,7 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.db.models.functions import GeometryDistance
 from django.contrib.gis.geos import Point
 from django.core.serializers import serialize
+from django.db.models import Q
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -37,11 +38,20 @@ class ClosestRiver(APIView):
     def get(self, request, lat: str, lon: str):
         user_point = Point(float(lon), float(lat), srid=4326)
 
+        # Only waterways with a name are eligible: "your closest river is an
+        # unnamed stream" tells nobody anything, and two thirds of all ways
+        # have no name. An unnamed way in a river relation still counts, since
+        # it is reported under the relation's name. river__isnull compiles to
+        # river_osm_id IS NOT NULL, with no join to get in the way of the
+        # index-ordered search below.
+        #
         # By default only rivers are eligible, not streams —
         # templates/pages/instructions.html tells users that smaller
         # water-courses are not highlighted as their closest river. The map's
         # "any waterway" switch opts in to streams with ?waterway=any.
-        candidates = RiverSection.objects.all()
+        candidates = RiverSection.objects.filter(
+            Q(name__gt="") | Q(river__isnull=False),
+        )
         if request.query_params.get("waterway") != "any":
             candidates = candidates.filter(waterway="river")
 
@@ -74,6 +84,7 @@ class ClosestRiver(APIView):
 
         return Response(
             {
+                "name": (river or river_section).display_name,
                 "river": river_serializer.data,
                 "section": section_serializer.data,
                 "distance": round(river_section.distance.km, 2),
@@ -145,7 +156,7 @@ class RiverSectionPopupInfo(APIView):
             popup_data["river_osm_id"] = river.osm_id
 
         popup_data.update(river_section.tags or {})
-        popup_data["name"] = river.name if river else river_section.name
+        popup_data["name"] = (river or river_section).display_name
 
         final_popup_data = {}
 
