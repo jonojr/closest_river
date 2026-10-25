@@ -45,6 +45,25 @@ def test_progress_updates_are_throttled(caplog):
     assert "example | All done" in caplog.messages
 
 
+def test_a_progress_bar_is_throttled(caplog):
+    """pmtiles extract redraws its bar about ten times a second."""
+    caplog.set_level(logging.INFO, logger=osm_pipeline.__name__)
+
+    osm_pipeline._run(
+        _python(
+            "import sys\n"
+            "for n in range(100):\n"
+            "    sys.stderr.write(f'\\rfetching chunks {n:3d}% |##   | (1.0/5.3 MB)')\n"
+            "print('\\nCompleted')",
+        ),
+        description="example",
+    )
+
+    bars = [m for m in caplog.messages if m.startswith("example | fetching")]
+    assert bars == ["example | fetching chunks   0% |##   | (1.0/5.3 MB)"]
+    assert "example | Completed" in caplog.messages
+
+
 def test_a_failure_reports_the_last_output(caplog):
     with pytest.raises(osm_pipeline.OsmPipelineError, match="exit code 3"):
         osm_pipeline._run(

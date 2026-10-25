@@ -42,11 +42,12 @@ DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 # How often the long-running steps report how far they have got.
 DOWNLOAD_PROGRESS_SECONDS = 60
-OSM2PGSQL_PROGRESS_SECONDS = 30
+COMMAND_PROGRESS_SECONDS = 30
 
-# osm2pgsql rewrites one progress line several times a second
-# ("Processing: Node(1234k 567.8k/s) Way(...)"); these are throttled.
-_PROGRESS_LINE = re.compile(r"Processing: ")
+# Progress lines a command rewrites several times a second; these are
+# throttled. osm2pgsql's "Processing: Node(1234k 567.8k/s) Way(...)", and
+# pmtiles' bar, "fetching chunks  44% |███████    | (2.4/5.3 MB, 1.2 MB/s)".
+_PROGRESS_LINE = re.compile(r"Processing: |\d+% \|")
 
 # Output kept for the error message when a command fails.
 _OUTPUT_TAIL_LINES = 50
@@ -114,7 +115,7 @@ def _run(command: list[str], *, description: str) -> None:
             tail.append(line)
             if _PROGRESS_LINE.search(line):
                 now = time.monotonic()
-                if last_progress and now - last_progress < OSM2PGSQL_PROGRESS_SECONDS:
+                if last_progress and now - last_progress < COMMAND_PROGRESS_SECONDS:
                     continue
                 last_progress = now
             logger.info("%s | %s", description, line)
