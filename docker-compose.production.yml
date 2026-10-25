@@ -9,7 +9,7 @@
 #   COMPOSE_PROJECT_NAME    keeps containers, networks and named volumes apart
 #   IMAGE_PREFIX            closest_river_production
 #   DATA_DIR                /mnt/Data/closest_river
-#   ENVS_DIR                ./.envs/.production
+#   ENVS_DIR                ./.envs/.production (may be an absolute host path)
 #   DJANGO_HOST_PORT        5000
 #   NGINX_HOST_PORT         5001
 #   FLOWER_HOST_PORT        5555
@@ -34,9 +34,15 @@ services:
     depends_on:
       - postgres
       - redis
+    # Not required, so the stack still parses where the env files are not in
+    # the checkout (they are never committed), e.g. a stack pulled from git by
+    # a deployment UI. Django will not start without their values, so point
+    # ENVS_DIR at wherever they live on the host.
     env_file:
-      - ${ENVS_DIR:-./.envs/.production}/.django
-      - ${ENVS_DIR:-./.envs/.production}/.postgres
+      - path: ${ENVS_DIR:-./.envs/.production}/.django
+        required: false
+      - path: ${ENVS_DIR:-./.envs/.production}/.postgres
+        required: false
     command: /start
     ports:
       - ${DJANGO_HOST_PORT:-5000}:5000
@@ -52,7 +58,8 @@ services:
       # filesystem where a named volume would put them.
       - ${DATA_DIR:-/mnt/Data/closest_river}/postgres_backups:/backups
     env_file:
-      - ${ENVS_DIR:-./.envs/.production}/.postgres
+      - path: ${ENVS_DIR:-./.envs/.production}/.postgres
+        required: false
     # The stock image defaults (128MB shared_buffers, 4MB work_mem, 64MB
     # maintenance_work_mem) are far too small for a planet-scale bulk load and
     # for ST_AsMVT at low zoom. Override per-box via the shell or a root .env;
