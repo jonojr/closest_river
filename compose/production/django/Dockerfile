@@ -150,6 +150,19 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   python3-psycopg2 \
   && rm -rf /var/lib/apt/lists/*
 
+# pmtiles, for cutting the self-hosted basemap out of the published planet
+# archives (rivers/basemap.py). A single static binary; not packaged by Debian.
+ARG PMTILES_VERSION=1.31.2
+ARG TARGETARCH
+RUN case "${TARGETARCH:-amd64}" in \
+    amd64) arch=x86_64 ;; \
+    arm64) arch=arm64 ;; \
+    *) echo "No pmtiles build for ${TARGETARCH}" >&2; exit 1 ;; \
+  esac \
+  && curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_${arch}.tar.gz" \
+  | tar -xz -C /usr/local/bin pmtiles \
+  && pmtiles version
+
 # Smoke-test the tooling at build time.
 # Note: `osm2pgsql-replication --help` exits 1 by design — the script catches
 # argparse's SystemExit and returns 1 — so assert on the imports it needs.

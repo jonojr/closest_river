@@ -132,6 +132,9 @@ services:
       # Planet PBF, filtered extracts and replication working files. Needs
       # several hundred GB free; keep it on the big disk.
       - ${DATA_DIR:-/mnt/Data/closest_river}/osm:/data:rw
+      # Where fetch_basemap writes the basemap that nginx serves. Over 200 GB
+      # for the planet, and twice the vector archive during a refresh.
+      - ${DATA_DIR:-/mnt/Data/closest_river}/basemap:/basemap:rw
     command: /start-osmworker
     ports: []
 
@@ -144,5 +147,7 @@ services:
       - django
     volumes:
       - ${DATA_DIR:-/mnt/Data/closest_river}/django_media:/usr/share/nginx/media:ro
+      # The self-hosted basemap, served as /tiles/ (see rivers/basemap.py).
+      - ${DATA_DIR:-/mnt/Data/closest_river}/basemap:/usr/share/nginx/tiles:ro
     ports:
       - ${NGINX_HOST_PORT:-5001}:80
