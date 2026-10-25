@@ -12,6 +12,40 @@ config/settings/base.py), so bare table names resolve without qualification.
 from django.contrib.gis.db.models import LineStringField
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
+from django.db.models import Q
+
+# Watercourses that are dry for part of the year: intermittent=yes, or a
+# seasonal=* value saying when they flow. Most of inland Australia's network
+# is tagged this way, and drawing it like permanent water is misleading.
+# Mirrors is_intermittent() in waterways.lua and the backfill in migration
+# 0005; keep the three in step.
+SEASONAL_VALUES = ("yes", "wet_season", "wet")
+
+
+def is_intermittent(tags: dict | None) -> bool:
+    tags = tags or {}
+    return tags.get("intermittent") == "yes" or tags.get("seasonal") in SEASONAL_VALUES
+
+
+INTERMITTENT_SECTIONS = Q(tags__intermittent="yes") | Q(
+    tags__seasonal__in=SEASONAL_VALUES,
+)
+
+
+def intermittent_tags_sql(tags: str = "tags") -> str:
+    """is_intermittent() as SQL, over the jsonb column `tags`."""
+    seasonal = ", ".join(f"'{value}'" for value in SEASONAL_VALUES)
+    return (
+        f"COALESCE({tags}->>'intermittent' = 'yes' "
+        f"OR {tags}->>'seasonal' IN ({seasonal}), false)"
+    )
+
+
+def unnamed_waterway(waterway: str | None) -> str:
+    """What to call a waterway with no name: its OSM waterway type if it has
+    one ("Unnamed drain"), otherwise just "Unnamed waterway"."""
+    noun = waterway.replace("_", " ") if waterway else "waterway"
+    return f"Unnamed {noun}"
 
 
 class SyncState(models.Model):
@@ -85,6 +119,16 @@ class RiverSection(models.Model):
     def __str__(self):
         return f"{self.name} ({self.osm_way_id})" if self.name else str(self.osm_way_id)
 
+    @property
+    def intermittent(self) -> bool:
+        return is_intermittent(self.tags)
+
+    @property
+    def display_name(self) -> str:
+        # The literal tag, not the waterway column: a promoted drain is stored
+        # as its relation's class, but is still a drain.
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
+
 
 class River(models.Model):
     """An OSM type=waterway relation grouping many sections."""
@@ -101,6 +145,28 @@ class River(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.osm_id})" if self.name else str(self.osm_id)
+
+    @property
+    def display_name(self) -> str:
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
+
+    def is_mostly_intermittent(self) -> bool:
+        """Whether to describe and draw the river as a whole as intermittent.
+
+        The relation is often untagged even when nearly every member way is
+        (Cooper Creek: 299 of 308 sections), so fall back to the majority.
+
+        Every section takes this verdict on the map, whatever its own tags say:
+        drawn way by way, a mostly permanent river breaks up into dashes
+        wherever a stretch happens to be tagged. Mirrored in SQL by
+        osm_pipeline.apply_river_intermittency(); keep the two in step.
+        """
+        if is_intermittent(self.tags):
+            return True
+        total = self.sections.count()
+        return total > 0 and (
+            self.sections.filter(INTERMITTENT_SECTIONS).count() * 2 > total
+        )
 
 
 class RiverMembership(models.Model):
@@ -155,6 +221,13 @@ class WaterwayTile(models.Model):
 
     osm_way_id = models.BigIntegerField(primary_key=True)
     waterway = models.TextField()
+    # Whether the map draws this way as intermittent: its river's verdict
+    # (River.is_mostly_intermittent) for a relation member, otherwise
+    # is_intermittent() of its own tags. Stored here because the cached zooms
+    # must never read waterway_section, where the tags live. waterways.lua
+    # writes the way's own value; osm_pipeline.apply_river_intermittency()
+    # then overwrites it for relation members.
+    intermittent = models.BooleanField(default=False)
     geometry = LineStringField(srid=3857)
 
     class Meta:

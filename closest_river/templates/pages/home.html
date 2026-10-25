@@ -11,31 +11,76 @@
   {{ block.super }}
   {% render_bundle 'mainMap' 'js' attrs='defer' %}
 {% endblock javascript %}
+{% block bodyclass %}
+  app-layout
+{% endblock bodyclass %}
 {% block content %}
-  <a id="map-link" target="_blank"></a>
-  <div id="map" class="map-height"></div>
-  <div class="container">
-    <div class="row">
-      <p class="col-4 mb-0">Name:</p>
-      <p class="col-8 mb-0">Approx. distance to river:</p>
-    </div>
-    <div class="row">
-      <a id="name" class="col-4"></a>
-      <p id="distance" class="col-8"></p>
-    </div>
-    <div class="row">
-      <p class="col-4 mb-0">Wikipedia:</p>
-      <p class="col-8 mb-0">Destination:</p>
-    </div>
-    <div class="row">
-      <a id="wikipedia" target="_blank" class="col-4"></a>
-      <p id="destination" class="col-8"></p>
-    </div>
+  <div class="map-shell">
+    <div id="map"></div>
+    <section id="finder" class="map-panel finder" aria-labelledby="finder-title">
+      <button id="finder-toggle"
+              class="btn finder__toggle"
+              type="button"
+              aria-label="Search again"
+              aria-controls="finder"
+              aria-expanded="true">
+        <i class="bi bi-search" aria-hidden="true"></i>
+      </button>
+      <h1 id="finder-title" class="finder__title">What's my closest river?</h1>
+      <p class="finder__lede">Use your location, or search for a place.</p>
+      <div class="finder__search">
+        <button id="find-closest-river"
+                class="btn btn-primary finder__locate"
+                type="button"
+                aria-label="Use my location">
+          <i class="bi bi-crosshair" aria-hidden="true"></i><span class="finder__locate-label">Use my location</span>
+        </button>
+        <div class="finder__divider">or</div>
+        <div id="geocoder"></div>
+      </div>
+      <div class="form-check form-switch finder__option">
+        <input class="form-check-input"
+               type="checkbox"
+               role="switch"
+               id="any-waterway" />
+        <label class="form-check-label" for="any-waterway">Include creeks &amp; streams</label>
+      </div>
+      <p id="status" class="finder__status" role="status"></p>
+    </section>
+    <section id="river-card"
+             class="map-panel river-card"
+             aria-labelledby="river-card-title"
+             hidden>
+      <button id="river-card-close"
+              type="button"
+              class="btn-close river-card__close"
+              aria-label="Close"></button>
+      <p id="river-card-eyebrow" class="river-card__eyebrow">Your closest river</p>
+      <h2 id="river-card-title" class="river-card__name">
+        <a id="name"></a>
+      </h2>
+      <p id="river-card-intermittent" class="river-card__badge" hidden>
+        <i class="bi bi-droplet-half" aria-hidden="true"></i>
+        Intermittent: often dry, flows after rain
+      </p>
+      <dl class="river-card__facts">
+        <div class="river-card__distance">
+          <dt>Distance</dt>
+          <dd id="distance">
+          </dd>
+        </div>
+        <div>
+          <dt>Flows into</dt>
+          <dd id="destination">
+          </dd>
+        </div>
+        <div class="river-card__wide">
+          <dt>Wikipedia</dt>
+          <dd>
+            <a id="wikipedia" target="_blank" rel="noopener"></a>
+          </dd>
+        </div>
+      </dl>
+    </section>
   </div>
-  <p id="status"></p>
-  <p id="result"></p>
-  <img id="arrow"
-       style="visibility:hidden"
-       src="{% static 'images/caret-right-fill.svg' %}"
-       alt="River direction arrow" />
 {% endblock content %}

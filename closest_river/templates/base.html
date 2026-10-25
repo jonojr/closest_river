@@ -17,8 +17,25 @@
           content="A web-app which displays the closest river to the user with some information" />
     <meta name="author" content="John Roberts" />
     <link rel="icon" href="{% static 'images/favicons/river.png' %}" />
+    {# Set the theme before anything paints; static/js/theme.js handles the toggle. #}
+    <script>
+      (function() {
+        var theme;
+        try {
+          theme = localStorage.getItem('theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-bs-theme', theme);
+      })();
+    </script>
     {% block css %}
       <!-- Your stuff: Third-party CSS libraries go here -->
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      <link rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
       <link rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
       <!-- This file stores project-specific CSS -->
@@ -36,10 +53,20 @@
   </head>
   <body class="{% block bodyclass %}{% endblock bodyclass %}">
     {% block body %}
-      <div class="mb-0">
-        <nav class="navbar navbar-expand-md navbar-light bg-light">
-          <div class="container-fluid">
-            <button class="navbar-toggler navbar-toggler-right"
+      {% with url_name=request.resolver_match.url_name %}
+        <nav class="navbar navbar-expand-md bg-body border-bottom site-nav">
+          <div class="container-fluid px-3">
+            <a class="navbar-brand" href="{% url 'home' %}">
+              <img src="{% static 'images/favicons/river.png' %}" alt="" />
+              My closest river
+            </a>
+            <button id="theme-toggle"
+                    class="btn theme-toggle ms-auto order-md-last"
+                    type="button"
+                    aria-label="Switch to dark mode">
+              <i class="bi bi-moon-stars"></i>
+            </button>
+            <button class="navbar-toggler border-0"
                     type="button"
                     data-bs-toggle="collapse"
                     data-bs-target="#navbarSupportedContent"
@@ -48,30 +75,39 @@
                     aria-label="Toggle navigation">
               <span class="navbar-toggler-icon"></span>
             </button>
-            <a class="navbar-brand" href="{% url 'home' %}">My closest river</a>
             <div class="collapse navbar-collapse" id="navbarSupportedContent">
-              <ul class="navbar-nav mr-auto">
-                <li class="nav-item active">
-                  <a class="nav-link" href="{% url 'home' %}">Map <span class="visually-hidden">(current)</span></a>
+              <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                  <a class="nav-link {% if url_name == 'home' %}active{% endif %}"
+                     {% if url_name == 'home' %}aria-current="page"{% endif %}
+                     href="{% url 'home' %}">Map</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="{% url 'instructions' %}">How to use</a>
+                  <a class="nav-link {% if url_name == 'instructions' %}active{% endif %}"
+                     {% if url_name == 'instructions' %}aria-current="page"{% endif %}
+                     href="{% url 'instructions' %}">How to use</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="{% url 'cautions' %}">Cautions</a>
+                  <a class="nav-link {% if url_name == 'cautions' %}active{% endif %}"
+                     {% if url_name == 'cautions' %}aria-current="page"{% endif %}
+                     href="{% url 'cautions' %}">Cautions</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="{% url 'about' %}">About</a>
+                  <a class="nav-link {% if url_name == 'about' %}active{% endif %}"
+                     {% if url_name == 'about' %}aria-current="page"{% endif %}
+                     href="{% url 'about' %}">About</a>
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link" href="{% url 'contact' %}">Contact</a>
+                  <a class="nav-link {% if url_name == 'contact' %}active{% endif %}"
+                     {% if url_name == 'contact' %}aria-current="page"{% endif %}
+                     href="{% url 'contact' %}">Contact</a>
                 </li>
               </ul>
             </div>
           </div>
         </nav>
-      </div>
-      <div class="container-fluid m-0 p-0">
+      {% endwith %}
+      <div class="container-fluid m-0 p-0 page-main">
         {% if messages %}
           {% for message in messages %}
             <div class="alert alert-dismissible {% if message.tags %}alert-{{ message.tags }}{% endif %}">
@@ -89,6 +125,24 @@
           {% endblock content %}
         {% endblock main %}
       </div>
+      {% block footer %}
+        <footer class="site-footer d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+          <small>
+            River data from
+            <a href="https://www.openstreetmap.org/copyright"
+               target="_blank"
+               rel="noopener">OpenStreetMap</a>{% if osm_data_updated_at %},{% endif %}
+            {% if osm_data_updated_at %}
+              updated
+              <time datetime="{{ osm_data_updated_at|date:'c' }}"
+                    title="{{ osm_data_updated_at }}">{{ osm_data_updated_at|date:"j M Y, g:i a" }}</time>
+            {% endif %}
+          </small>
+          <small>
+            <a href="https://www.flaticon.com/free-icons/river" title="river icons">River icons by Freepik - Flaticon</a>
+          </small>
+        </footer>
+      {% endblock footer %}
     {% endblock body %}
     <!-- /container -->
     {% block modal %}
@@ -105,48 +159,4 @@
       {% endcomment %}
     {% endblock inline_javascript %}
   </body>
-  <footer class="d-flex flex-wrap justify-content-between align-items-center py-3 my-4 border-top">
-    <div class="col-md-4 d-flex align-items-center">
-      <a href="https://www.flaticon.com/free-icons/river"
-         class="ms-2 mb-3 me-2 mb-md-0 text-body-secondary text-decoration-none lh-1"
-         title="river icons">River icons created by Freepik - Flaticon</a>
-    </div>
-    <div class="col-md-4 d-flex justify-content-center">
-      <small class="text-body-secondary text-center">
-        River data from
-        <a class="text-body-secondary"
-           href="https://www.openstreetmap.org/copyright"
-           target="_blank"
-           rel="noopener">OpenStreetMap</a>
-        {% if osm_data_updated_at %}
-          , updated
-          <time datetime="{{ osm_data_updated_at|date:'c' }}"
-                title="{{ osm_data_updated_at }}">{{ osm_data_updated_at|date:"j M Y, g:i a" }}</time>
-        {% endif %}
-      </small>
-    </div>
-    <ul class="nav col-md-4 justify-content-end list-unstyled d-flex">
-      <li class="ms-3">
-        <a class="text-body-secondary" href="#">
-          <svg class="bi" width="24" height="24">
-            <use xlink:href="#twitter"></use>
-          </svg>
-        </a>
-      </li>
-      <li class="ms-3">
-        <a class="text-body-secondary" href="#">
-          <svg class="bi" width="24" height="24">
-            <use xlink:href="#instagram"></use>
-          </svg>
-        </a>
-      </li>
-      <li class="ms-3">
-        <a class="text-body-secondary" href="#">
-          <svg class="bi" width="24" height="24">
-            <use xlink:href="#facebook"></use>
-          </svg>
-        </a>
-      </li>
-    </ul>
-  </footer>
 </html>

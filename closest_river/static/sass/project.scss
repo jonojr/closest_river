@@ -40,11 +40,929 @@ $red: #b94a48;
   height: 70vh;
 }
 
-.find-closest-river:hover {
-  background-color: var(--bs-btn-hover-bg) !important;
-}
-
 .icon-size {
   width: 16px;
   height: 16px;
+}
+
+////////////
+// Layout //
+////////////
+
+$panel-shadow:
+  0 1px 2px rgba(15, 23, 42, 0.08),
+  0 8px 24px rgba(15, 23, 42, 0.12);
+$panel-gutter: 12px;
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page-main {
+  flex: 1 0 auto;
+}
+
+.site-nav {
+  .navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--bs-emphasis-color);
+  }
+
+  .navbar-brand img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .nav-link,
+  .theme-toggle {
+    font-weight: 500;
+    color: var(--bs-secondary-color);
+
+    &:hover,
+    &.active {
+      color: var(--bs-link-color);
+    }
+  }
+}
+
+.theme-toggle {
+  --bs-btn-padding-x: 0.5rem;
+  --bs-btn-border-width: 0;
+  font-size: 1.125rem;
+}
+
+.site-footer {
+  font-size: 0.8125rem;
+  color: var(--bs-secondary-color);
+
+  a {
+    color: inherit;
+  }
+}
+
+// Map-first pages: the body is exactly one viewport tall and the map takes
+// whatever the nav and footer leave.
+body.app-layout {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+
+  .page-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
+
+.map-shell {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+
+  #map {
+    position: absolute;
+    inset: 0;
+  }
+}
+
+///////////////////
+// Content pages //
+///////////////////
+
+// The text pages (About, How to use, ...) and the error pages: one readable
+// column under a header band tinted like water, in the same type and colour
+// as the map panels.
+$content-width: 46rem;
+
+.content-page {
+  &__header {
+    padding: 3rem 1rem 2rem;
+    background: linear-gradient(
+      180deg,
+      rgba($primary, 0.07),
+      rgba($primary, 0) 100%
+    );
+  }
+
+  &__header-inner,
+  &__body {
+    max-width: $content-width;
+    margin: 0 auto;
+  }
+
+  // Padded outside the column, so the text lines up with the header's.
+  &__body {
+    max-width: $content-width + 2rem;
+    padding: 0 1rem 4rem;
+  }
+
+  &__eyebrow {
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bs-link-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__title {
+    margin-bottom: 0.75rem;
+    font-size: 2.25rem;
+    letter-spacing: -0.025em;
+  }
+
+  &__lede {
+    margin: 0;
+    font-size: 1.1875rem;
+    line-height: 1.55;
+    color: var(--bs-secondary-color);
+  }
+
+  @include media-breakpoint-down(md) {
+    &__header {
+      padding: 2rem 1rem 1.5rem;
+    }
+
+    &__title {
+      font-size: 1.75rem;
+    }
+
+    &__lede {
+      font-size: 1.0625rem;
+    }
+  }
+}
+
+.prose {
+  line-height: 1.7;
+
+  p {
+    margin-bottom: 1.125rem;
+  }
+
+  h2 {
+    margin: 2.25rem 0 0.75rem;
+    font-size: 1.25rem;
+    letter-spacing: -0.015em;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// An image beside its text, stacking on phones.
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: start;
+  margin: 2rem 0;
+
+  figure {
+    margin: 0;
+  }
+
+  img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: $border-radius-lg;
+    box-shadow: $panel-shadow;
+  }
+
+  figcaption {
+    margin-top: 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--bs-secondary-color);
+  }
+
+  @include media-breakpoint-down(sm) {
+    grid-template-columns: minmax(0, 1fr);
+
+    figure {
+      max-width: 18rem;
+    }
+  }
+}
+
+.callout {
+  display: flex;
+  gap: 0.875rem;
+  margin: 0 0 2rem;
+  padding: 1rem 1.125rem;
+  line-height: 1.55;
+  color: var(--bs-warning-text-emphasis);
+  background: var(--bs-warning-bg-subtle);
+  border: 1px solid var(--bs-warning-border-subtle);
+  border-radius: $border-radius-lg;
+
+  > .bi {
+    flex: none;
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  p + p {
+    margin-top: 0.375rem;
+  }
+}
+
+// Numbered steps, each with an icon in a tinted circle.
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    display: grid;
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1.25rem 0;
+
+    & + li {
+      border-top: 1px solid var(--bs-border-color);
+    }
+  }
+
+  h2 {
+    margin: 0.375rem 0 0.375rem;
+    font-size: 1.0625rem;
+  }
+
+  p,
+  ul {
+    margin-bottom: 0.5rem;
+    line-height: 1.65;
+    color: var(--bs-body-color);
+  }
+
+  > li > div > :last-child {
+    margin-bottom: 0;
+  }
+
+  ul {
+    padding-left: 1.125rem;
+  }
+}
+
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 1.125rem;
+  color: var(--bs-link-color);
+  background: rgba($primary, 0.1);
+  border-radius: 50%;
+
+  img {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+}
+
+[data-bs-theme='dark'] .icon-badge {
+  background: rgba($primary, 0.25);
+}
+
+// Key words from the map's own UI, set like the buttons they name.
+.ui-label {
+  padding: 0.0625rem 0.375rem;
+  font-size: 0.875em;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.375rem;
+}
+
+.contact-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.contact-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.125rem;
+  color: inherit;
+  background: var(--bs-body-bg);
+  border: 1px solid var(--bs-border-color);
+  border-radius: $border-radius-lg;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none;
+    border-color: rgba($primary, 0.5);
+    box-shadow: $panel-shadow;
+  }
+
+  .icon-badge {
+    margin-bottom: 0.5rem;
+  }
+
+  &__title {
+    font-weight: 600;
+    color: var(--bs-emphasis-color);
+  }
+
+  &__text {
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+  }
+
+  &__link {
+    margin-top: auto;
+    padding-top: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--bs-link-color);
+    overflow-wrap: anywhere;
+  }
+}
+
+// Error pages: a short message centred in the page, and a way back.
+.empty-state {
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: 5rem 1rem;
+  text-align: center;
+
+  .icon-badge {
+    width: 4rem;
+    height: 4rem;
+    margin-bottom: 1.25rem;
+    font-size: 1.75rem;
+  }
+
+  &__code {
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bs-link-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__title {
+    margin-bottom: 0.75rem;
+    font-size: 1.75rem;
+    letter-spacing: -0.02em;
+  }
+
+  &__text {
+    margin-bottom: 1.75rem;
+    color: var(--bs-secondary-color);
+  }
+}
+
+/////////////////
+// Map panels  //
+/////////////////
+
+.map-panel {
+  position: absolute;
+  z-index: 2;
+  left: $panel-gutter;
+  width: 340px;
+  max-width: calc(100% - #{$panel-gutter * 2});
+  padding: 1rem 1.125rem;
+  background: rgba(var(--bs-body-bg-rgb), 0.97);
+  border-radius: $border-radius-lg;
+  box-shadow: $panel-shadow;
+}
+
+.finder {
+  top: $panel-gutter;
+
+  &__title {
+    margin-bottom: 0.25rem;
+    font-size: 1.25rem;
+    letter-spacing: -0.015em;
+  }
+
+  &__lede {
+    margin-bottom: 0.875rem;
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+  }
+
+  &__divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      border-top: 1px solid var(--bs-border-color);
+    }
+  }
+
+  &__locate {
+    width: 100%;
+  }
+
+  &__locate-label {
+    margin-left: 0.5rem;
+  }
+
+  // Only shown while the finder is collapsed, on phones.
+  &__toggle {
+    display: none;
+  }
+
+  &__option {
+    margin: 0.75rem 0 0;
+    font-size: 0.875rem;
+  }
+
+  &__status {
+    margin: 0.625rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--bs-secondary-color);
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  // The geocoder ships styled as a floating map control; flatten it into the
+  // panel as a normal form field.
+  .maplibregl-ctrl-geocoder {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    font-family: inherit;
+    font-size: 0.9375rem;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: $border-radius;
+    box-shadow: none;
+
+    &:focus-within {
+      border-color: $primary;
+      box-shadow: 0 0 0 0.2rem rgba($primary, 0.2);
+    }
+  }
+
+  .maplibregl-ctrl-geocoder--input {
+    height: 40px;
+    color: var(--bs-body-color);
+
+    &:focus {
+      outline: none;
+    }
+  }
+
+  .maplibregl-ctrl-geocoder--icon {
+    fill: var(--bs-secondary-color);
+  }
+
+  .maplibregl-ctrl-geocoder--icon-search {
+    top: 10px;
+  }
+
+  .maplibregl-ctrl-geocoder .suggestions {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+
+    > li > a {
+      color: var(--bs-body-color);
+    }
+
+    > .active > a,
+    > li > a:hover {
+      background: var(--bs-tertiary-bg);
+      color: var(--bs-body-color);
+    }
+  }
+}
+
+.river-card {
+  bottom: $panel-gutter + 20px; // clear the map attribution line
+
+  &[hidden] {
+    display: none;
+  }
+
+  &__close {
+    position: absolute;
+    top: 0.875rem;
+    right: 0.875rem;
+    font-size: 0.75rem;
+  }
+
+  &__eyebrow {
+    margin-bottom: 0.125rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--bs-link-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__name {
+    margin-bottom: 0.875rem;
+    padding-right: 1.5rem;
+    font-size: 1.375rem;
+    letter-spacing: -0.015em;
+
+    a {
+      color: inherit;
+    }
+  }
+
+  &__facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1rem;
+    margin: 0;
+
+    dt {
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--bs-secondary-color);
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    [hidden] {
+      display: none;
+    }
+  }
+
+  &__distance dd {
+    font-size: 1.5rem;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--bs-emphasis-color);
+  }
+
+  &__wide {
+    grid-column: 1 / -1;
+  }
+
+  // Shared with the river page's panel.
+  &__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin: -0.375rem 0 0.875rem;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border-radius: 999px;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+}
+
+// River detail page: name, facts and tags over the map.
+.river-panel {
+  top: $panel-gutter;
+  max-height: calc(100% - #{$panel-gutter * 2 + 20px});
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  &__name {
+    margin-bottom: 0.875rem;
+    font-size: 1.5rem;
+    letter-spacing: -0.015em;
+  }
+
+  &__tags {
+    margin-top: 0.875rem;
+    font-size: 0.8125rem;
+  }
+}
+
+// Phones: the finder collapses to a search bar across the top (leaving room
+// for the zoom controls) and the result card becomes a bottom sheet.
+@include media-breakpoint-down(md) {
+  .map-panel {
+    width: auto;
+    padding: 0.75rem;
+  }
+
+  // Location as an icon beside the search box, and the switch on one small
+  // line: two rows instead of four.
+  .finder {
+    right: 56px;
+
+    &__title,
+    &__lede,
+    &__divider {
+      display: none;
+    }
+
+    &__search {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    &__locate {
+      flex: none;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+    }
+
+    &__locate-label {
+      @include visually-hidden;
+    }
+
+    #geocoder {
+      flex: 1;
+      min-width: 0;
+    }
+
+    &__option {
+      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+    }
+  }
+
+  // Once there is a result, the finder folds away to a single search button
+  // so the map and the result card get the screen.
+  .finder--collapsed {
+    right: auto;
+    padding: 0;
+
+    > * {
+      display: none;
+    }
+
+    > .finder__toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      font-size: 1.125rem;
+      color: var(--bs-body-color);
+    }
+  }
+
+  .river-card {
+    right: $panel-gutter;
+    padding: 1rem;
+  }
+
+  // The river panel becomes a bottom sheet, clear of the attribution line.
+  .river-panel {
+    top: auto;
+    right: $panel-gutter;
+    bottom: $panel-gutter + 20px;
+    max-height: 45%;
+
+    &__name {
+      font-size: 1.25rem;
+    }
+  }
+}
+
+/////////////////////
+// Map chrome      //
+/////////////////////
+
+.maplibregl-ctrl-group,
+.mapbox-ctrl-ruler {
+  border-radius: $border-radius !important;
+  box-shadow: $panel-shadow !important;
+}
+
+// Above the floating panels: the layers panel opens out of this column over
+// the finder and the result card, and would otherwise open underneath them
+// (both are z-index 2, and the panels come later in the page). Scoped to the
+// shell to outrank maplibre-gl.css, which sets z-index 2 and loads after us.
+.map-shell .maplibregl-ctrl-top-right {
+  z-index: 3;
+}
+
+// The ruler control still uses mapbox class names, so it misses MapLibre's
+// control spacing and sits flush against the edge of the map.
+.maplibregl-ctrl-top-right .mapbox-ctrl-ruler {
+  float: right;
+  clear: both;
+  margin: 10px 10px 0 0;
+}
+
+.maplibregl-popup-content {
+  padding: 0.75rem 1rem;
+  font-family: $font-family-sans-serif;
+  font-size: 0.8125rem;
+  color: var(--bs-body-color);
+  background: var(--bs-body-bg);
+  border-radius: $border-radius;
+  box-shadow: $panel-shadow;
+}
+
+// The tip is a CSS triangle drawn with borders; match it to the popup body.
+.maplibregl-popup-anchor-top,
+.maplibregl-popup-anchor-top-left,
+.maplibregl-popup-anchor-top-right {
+  .maplibregl-popup-tip {
+    border-bottom-color: var(--bs-body-bg);
+  }
+}
+
+.maplibregl-popup-anchor-bottom,
+.maplibregl-popup-anchor-bottom-left,
+.maplibregl-popup-anchor-bottom-right {
+  .maplibregl-popup-tip {
+    border-top-color: var(--bs-body-bg);
+  }
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bs-body-bg);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bs-body-bg);
+}
+
+.maplibregl-popup-close-button {
+  padding: 0 0.375rem;
+  font-size: 1.125rem;
+  color: var(--bs-secondary-color);
+}
+
+// Key/value table. OSM keys can be long (communication:amateur_radio:pota),
+// so both columns are allowed to break anywhere rather than overflow into
+// each other.
+.popup-table {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  margin: 0;
+  padding-right: 1rem; // clear the close button
+
+  dt,
+  dd {
+    margin: 0;
+    padding: 0.3rem 0.75rem 0.3rem 0;
+    overflow-wrap: anywhere;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+  }
+
+  dt {
+    font-weight: 400;
+    color: var(--bs-secondary-color);
+  }
+
+  dt:nth-last-of-type(1),
+  dd:last-of-type {
+    border-bottom: 0;
+  }
+}
+
+// Even curated, a popup can be long; scroll inside it rather than running
+// off the map.
+.popup-body {
+  max-height: min(55vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.popup-more {
+  margin-top: 0.375rem;
+
+  summary {
+    padding: 0.25rem 0;
+    color: var(--bs-link-color);
+    cursor: pointer;
+  }
+}
+
+.popup-note {
+  margin: 0;
+  padding-right: 1rem;
+}
+
+// Layers control: a button that opens a small panel to its left.
+.maplibregl-ctrl-top-right .layer-control {
+  position: relative;
+  clear: both;
+  overflow: visible;
+
+  > button {
+    font-size: 1rem;
+    color: var(--bs-body-color);
+  }
+}
+
+.layer-control__panel {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  color: var(--bs-body-color);
+  background: var(--bs-body-bg);
+  border-radius: $border-radius;
+  box-shadow: $panel-shadow;
+
+  &[hidden] {
+    display: none;
+  }
+
+  .form-check {
+    margin: 0;
+    min-height: 0;
+    padding-top: 0.125rem;
+    padding-bottom: 0.125rem;
+  }
+}
+
+.layer-control__section {
+  & + & {
+    margin-top: 0.625rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid var(--bs-border-color);
+  }
+
+  legend {
+    margin-bottom: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+}
+
+// MapLibre's own chrome is hardcoded light; repaint it for dark mode.
+[data-bs-theme='dark'] {
+  .maplibregl-ctrl-group,
+  .mapbox-ctrl-ruler {
+    background: var(--bs-tertiary-bg);
+
+    button + button {
+      border-top-color: var(--bs-border-color);
+    }
+  }
+
+  .maplibregl-ctrl-icon {
+    filter: invert(1);
+  }
+
+  .mapbox-ctrl-ruler button {
+    color: var(--bs-body-color);
+  }
+
+  .maplibregl-ctrl.maplibregl-ctrl-attrib {
+    background: rgba(var(--bs-body-bg-rgb), 0.75);
+    color: var(--bs-secondary-color);
+
+    a {
+      color: var(--bs-body-color);
+    }
+  }
+
+  .maplibregl-ctrl-attrib-button {
+    filter: invert(1);
+  }
+
+  .maplibregl-ctrl-scale {
+    background: rgba(var(--bs-body-bg-rgb), 0.75);
+    border-color: var(--bs-secondary-color);
+    color: var(--bs-body-color);
+  }
 }

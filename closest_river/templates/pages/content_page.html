@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% comment %}
+  A text page: a header band (eyebrow, title, lede) over one readable column.
+  Pages fill page_title (for the browser tab), eyebrow, heading, lede and
+  page_body.
+{% endcomment %}
+{% block title %}
+  {% block page_title %}
+  {% endblock page_title %}
+  · My closest river
+{% endblock title %}
+{% block content %}
+  <article class="content-page">
+    <header class="content-page__header">
+      <div class="content-page__header-inner">
+        <p class="content-page__eyebrow">
+          {% block eyebrow %}
+          {% endblock eyebrow %}
+        </p>
+        <h1 class="content-page__title">
+          {% block heading %}
+          {% endblock heading %}
+        </h1>
+        <p class="content-page__lede">
+          {% block lede %}
+          {% endblock lede %}
+        </p>
+      </div>
+    </header>
+    <div class="content-page__body">
+      {% block page_body %}
+      {% endblock page_body %}
+    </div>
+  </article>
+{% endblock content %}

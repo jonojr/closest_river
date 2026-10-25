@@ -1,0 +1,33 @@
+// Bootstrap overrides. Imported before Bootstrap so these win over its
+// !default values.
+
+// River palette: a deep water blue for actions and links, slate neutrals for
+// text so the map colours carry the page.
+$primary: #0b63c5;
+$secondary: #64748b;
+$body-color: #1e293b;
+$body-secondary-color: #64748b;
+$link-color: $primary;
+$link-decoration: none;
+$link-hover-decoration: underline;
+
+$font-family-sans-serif:
+  'Inter',
+  system-ui,
+  -apple-system,
+  'Segoe UI',
+  Roboto,
+  'Helvetica Neue',
+  Arial,
+  sans-serif;
+$headings-font-weight: 650;
+$headings-color: #0f172a;
+
+$border-radius: 0.5rem;
+$border-radius-lg: 0.75rem;
+$btn-font-weight: 600;
+$btn-padding-y: 0.5rem;
+$btn-padding-x: 1rem;
+
+$navbar-brand-font-size: 1.125rem;
+$navbar-nav-link-padding-x: 0.75rem;

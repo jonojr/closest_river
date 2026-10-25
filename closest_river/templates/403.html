@@ -1,15 +1,18 @@
-{% extends "base.html" %}
+{% extends "error_page.html" %}
 
 {% block title %}
-  Forbidden (403)
+  Forbidden · My closest river
 {% endblock title %}
-{% block content %}
-  <h1>Forbidden (403)</h1>
-  <p>
-    {% if exception %}
-      {{ exception }}
-    {% else %}
-      You're not allowed to access this page.
-    {% endif %}
-  </p>
-{% endblock content %}
+{% block icon %}
+  bi-shield-lock
+{% endblock icon %}
+{% block code %}
+  Error 403
+{% endblock code %}
+{% block heading %}
+  You can’t access this page
+{% endblock heading %}
+{% block message %}
+  {# Not {{ exception }}: in production that is often just a class name. #}
+  You’re not allowed to access this page.
+{% endblock message %}

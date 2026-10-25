@@ -25,10 +25,18 @@ SEED_X, SEED_Y = 16132000, -4554000
 SEED_LENGTH_M = 600_000
 
 
-def _tile_row(osm_way_id, waterway, offset=0, length=SEED_LENGTH_M):
+def _tile_row(
+    osm_way_id,
+    waterway,
+    offset=0,
+    length=SEED_LENGTH_M,
+    *,
+    intermittent=False,
+):
     return WaterwayTile.objects.create(
         osm_way_id=osm_way_id,
         waterway=waterway,
+        intermittent=intermittent,
         geometry=LineString(
             (SEED_X + offset, SEED_Y),
             (SEED_X + offset + length, SEED_Y - length),
@@ -76,8 +84,9 @@ def test_cached_zooms_read_the_generalised_tile_table():
 def test_uncached_zooms_read_the_canonical_table():
     sql = RiverSectionVectorLayer()._full_detail_sql()
 
-    assert "waterway_section" in sql
-    assert "waterway_tile" not in sql
+    assert 'FROM "osm"."waterway_section"' in sql
+    # Only joined, for the intermittent flag; see the test below.
+    assert 'FROM "osm"."waterway_tile"' not in sql
 
 
 def test_geometry_is_snapped_to_the_pixel_grid_at_every_zoom():
@@ -190,3 +199,54 @@ def test_empty_area_renders_an_empty_tile():
     tile = mercantile.tile(-140.0, 0.0, 6)
 
     assert layer.get_tile(tile.x, tile.y, tile.z) == b""
+
+
+def test_merged_streams_stay_split_by_intermittent():
+    """Merging must not mix permanent and intermittent water into one
+    feature, or the map can no longer draw them differently."""
+    assert "GROUP BY intermittent" in StreamSectionVectorLayer()._cached_zoom_sql()
+
+
+@pytest.mark.parametrize(
+    "layer_class",
+    [RiverSectionVectorLayer, StreamSectionVectorLayer],
+)
+def test_every_zoom_carries_the_intermittent_flag(layer_class):
+    layer = layer_class()
+
+    # Cached zooms use the precomputed column; they must not read the tags,
+    # which live in waterway_section.
+    assert "intermittent" in layer._cached_zoom_sql()
+    assert "tags" not in layer._cached_zoom_sql()
+    assert "intermittent" in layer._full_detail_sql()
+
+
+@pytest.mark.parametrize("zoom", [6, 12])
+def test_intermittent_reaches_the_rendered_tile(zoom):
+    _tile_row(1, "stream", intermittent=True)
+    RiverSectionFactory(
+        osm_way_id=800010,
+        waterway="stream",
+        tags={"waterway": "stream", "intermittent": "yes"},
+        geometry=LineString(
+            (SEED_LON, SEED_LAT),
+            (SEED_LON + 0.01, SEED_LAT - 0.01),
+            srid=4326,
+        ),
+    )
+    _tile_row(800010, "stream", intermittent=True)
+    tile = mercantile.tile(SEED_LON, SEED_LAT, zoom)
+
+    rendered = StreamSectionVectorLayer().get_tile(tile.x, tile.y, zoom)
+
+    # MVT stores property names verbatim in the layer's key table.
+    assert b"intermittent" in rendered
+
+
+def test_full_detail_takes_the_flag_from_the_tile_table_not_the_tags():
+    """For a relation member the flag is its river's verdict, which only
+    waterway_tile holds; the way's own tags would break the river up again."""
+    layer = RiverSectionVectorLayer()
+
+    assert "waterway_tile" in layer._full_detail_sql()
+    assert "tags" not in layer._full_detail_sql()

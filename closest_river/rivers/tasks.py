@@ -98,11 +98,14 @@ def sync_osm_waterways() -> dict:
     from closest_river.rivers.views import RiverSectionBaseLayer
 
     layer_ids = [layer.id for layer in RiverSectionBaseLayer.layer_classes]
-    steps = _Steps("OSM sync", total=3)
+    steps = _Steps("OSM sync", total=4)
 
     with _pipeline_lock("sync_osm_waterways", _SYNC_LOCK_TIMEOUT):
         with steps.step("Applying replication diffs"):
             osm_pipeline.replication_update()
+        # Before the invalidation below, which evicts the tiles this restyles.
+        with steps.step("Restyling rivers by their overall intermittency"):
+            osm_pipeline.apply_river_intermittency(settings.OSM_SCHEMA, expire=True)
         with steps.step("Analyzing tables"):
             osm_pipeline.analyze_schema(settings.OSM_SCHEMA)
         with steps.step("Invalidating changed tiles"):
@@ -141,7 +144,7 @@ def full_import_osm_waterways(*, download: bool = True) -> dict:
     live_schema = settings.OSM_SCHEMA
     staging_schema = f"{live_schema}_staging"
 
-    steps = _Steps("Full OSM import", total=7 if download else 6)
+    steps = _Steps("Full OSM import", total=8 if download else 7)
 
     with _pipeline_lock("full_import_osm_waterways", _IMPORT_LOCK_TIMEOUT):
         planet = osm_pipeline.data_dir() / "planet-latest.osm.pbf"
@@ -157,6 +160,9 @@ def full_import_osm_waterways(*, download: bool = True) -> dict:
 
         with steps.step(f"Importing into {staging_schema}"):
             osm_pipeline.import_pbf(waterways, schema=staging_schema)
+        # Before the swap, so the live schema is never drawn way by way.
+        with steps.step("Restyling rivers by their overall intermittency"):
+            osm_pipeline.apply_river_intermittency(staging_schema, expire=False)
         with steps.step(f"Swapping {staging_schema} in as {live_schema}"):
             osm_pipeline.swap_schema(staging=staging_schema, live=live_schema)
 

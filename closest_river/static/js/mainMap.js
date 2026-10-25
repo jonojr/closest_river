@@ -1,344 +1,225 @@
-import 'maplibre-gl/dist/maplibre-gl.css';
 import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
-import '@mapbox-controls/ruler/src/index.css';
 
-import RulerControl from '@mapbox-controls/ruler';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
-import { SearchButtonControl } from './SearchButtonControl';
+import { EMPTY, createRiverMap, popupNote } from './riverMap';
 
-const map = new maplibregl.Map({
-  container: 'map', // container id
-  style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${process.env.MAPTILER_API_KEY}`,
-  center: [135.0951931, -26.3911232],
-  zoom: 3, // starting zoom
-});
+const finder = document.querySelector('#finder');
+const finderToggle = document.querySelector('#finder-toggle');
+const riverCard = document.querySelector('#river-card');
 
-function changeCursorOnHover(map, layerName) {
+// The finder and result panels float over the map: down the left on wider
+// screens, top and bottom on phones. Pad the camera so results land in the
+// part of the map that is still visible. On phones the panels change height
+// (the finder collapses, the card depends on what it shows), so measure them.
+const wideScreen = window.matchMedia('(min-width: 768px)');
+function cameraPadding() {
   'use strict';
-
-  // Change the cursor to a pointer when the mouse is over the places layer.
-  map.on('mouseenter', layerName, () => {
-    map.getCanvas().style.cursor = 'pointer';
-  });
-
-  // Change it back to a pointer when it leaves.
-  map.on('mouseleave', layerName, () => {
-    map.getCanvas().style.cursor = '';
-  });
+  if (wideScreen.matches) {
+    return { top: 40, right: 70, bottom: 40, left: 380 };
+  }
+  const mapBox = document.querySelector('#map').getBoundingClientRect();
+  return {
+    top: finder.getBoundingClientRect().bottom - mapBox.top + 20,
+    right: 60,
+    bottom: riverCard.hidden
+      ? 40
+      : mapBox.bottom - riverCard.getBoundingClientRect().top + 20,
+    left: 30,
+  };
 }
 
+// On phones the finder folds away to a single search button once there is a
+// result, and opens again from it.
+function setFinderCollapsed(collapsed) {
+  'use strict';
+  const collapse = collapsed && !wideScreen.matches;
+  finder.classList.toggle('finder--collapsed', collapse);
+  finderToggle.setAttribute('aria-expanded', String(!collapse));
+}
+
+finderToggle.addEventListener('click', () => {
+  'use strict';
+  setFinderCollapsed(false);
+  finder.querySelector('.maplibregl-ctrl-geocoder--input')?.focus();
+});
+
+// The dotted line from the searched point to the river. Kept outside the map
+// so it survives a basemap swap, like the highlighted river.
+let lineToRiver = EMPTY;
 let distanceToClosestRiver = 0;
 
-map.on('load', (e) => {
-  'use strict';
-
-  const layers = map.getStyle().layers;
-  // Find the index of the first symbol layer in the map style
-  let firstSymbolId;
-  for (let i = 0; i < layers.length; i++) {
-    if (layers[i].type === 'symbol') {
-      firstSymbolId = layers[i].id;
-      break;
-    }
-  }
-
-  const img = document.querySelector('#arrow');
-  map.addImage('arrow', img);
-  map.addSource('river-sections-data', {
-    type: 'vector',
-    url: '/rivers/river-sections/tiles.json',
-  });
-  // Streams first, so rivers draw on top of the wash.
-  //
-  // Deliberately lighter and thinner than rivers: at low zoom the stream
-  // network is dense enough that drawing it at full weight turns into a solid
-  // block of colour. Kept subordinate, it reads as texture and the main river
-  // network stays legible against it.
-  map.addLayer(
-    {
-      id: 'stream-sections',
-      type: 'line',
-      source: 'river-sections-data',
-      'source-layer': 'stream-sections',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
+const { map, popup, flow, setRiver } = createRiverMap({
+  addExtraLayers(map, colours, beforeId) {
+    map.addSource('line_to_river', { type: 'geojson', data: lineToRiver });
+    map.addLayer(
+      {
+        id: 'line_to_river',
+        type: 'line',
+        source: 'line_to_river',
+        layout: {
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': colours.lineToRiver,
+          'line-width': 3,
+          'line-dasharray': [0.5, 2],
+        },
       },
-      paint: {
-        'line-color': '#6970ff',
-        'line-opacity': 0.55,
-        // Hairline when zoomed out, approaching the river weight as you zoom in.
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          4,
-          0.5,
-          9,
-          0.8,
-          14,
-          1.5,
-        ],
-      },
-    },
-    firstSymbolId,
-  );
-  map.addLayer(
-    {
-      id: 'river-sections',
-      type: 'line',
-      source: 'river-sections-data',
-      'source-layer': 'river-sections',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': '#6970ff',
-        'line-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          4,
-          1,
-          9,
-          2,
-          14,
-          2.5,
-        ],
-      },
-    },
-    firstSymbolId,
-  );
-  map.addLayer(
-    {
-      id: 'river-section-arrows',
-      type: 'symbol',
-      source: 'river-sections-data',
-      'source-layer': 'river-sections',
-      layout: {
-        'symbol-placement': 'line',
-        'symbol-spacing': 150,
-        'icon-image': 'arrow', // The arrow image
-        'icon-size': 1,
-      },
-    },
-    firstSymbolId,
-  );
-  map.addSource(`river`, {
-    type: 'geojson',
-    data: {
-      type: 'FeatureCollection',
-      features: [], // Start with no lines
-    },
-  });
-  map.addLayer(
-    {
-      id: `river`,
-      type: 'line',
-      source: `river`,
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': 'rgba(12,35,182,0.91)',
-        'line-width': 5,
-      },
-    },
-    firstSymbolId,
-  );
-  map.addLayer(
-    {
-      id: 'arrows',
-      type: 'symbol',
-      source: 'river',
-      layout: {
-        'symbol-placement': 'line',
-        'symbol-spacing': 150,
-        'icon-image': 'arrow', // The arrow image
-        'icon-size': 1.5,
-      },
-    },
-    firstSymbolId,
-  );
-
-  map.addSource(`line_to_river`, {
-    type: 'geojson',
-    data: {
-      type: 'LineString',
-      geometry: {
-        type: 'LineString',
-        coordinates: [],
-      },
-    },
-  });
-  map.addLayer(
-    {
-      id: `line_to_river`,
-      type: 'line',
-      source: `line_to_river`,
-      paint: {
-        'line-color': 'rgba(47,47,48,0.91)',
-        'line-width': 5,
-        'line-dasharray': [2, 1],
-      },
-    },
-    firstSymbolId,
-  );
+      beforeId,
+    );
+  },
+  extraPopups: {
+    line_to_river: () =>
+      popupNote(`Distance to the closest river: ${distanceToClosestRiver} km`),
+  },
 });
 
-map.on('click', 'river', (e) => {
-  'use strict';
-  const description = JSON.parse(e.features[0].properties.tags);
+const marker = new maplibregl.Marker({ color: '#0b63c5' });
 
-  let html = '<div class="container">';
-  for (const key of Object.keys(description)) {
-    html += `<div class="row">
-            <p class="col-5" style="text-wrap: pretty;">${key}</p><p class="col-7" style="text-wrap: pretty;">${description[key]}</p>
-        </div>`;
-  }
-  html += '</div>';
+/////////////////
+// Find nearest //
+/////////////////
 
-  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-});
+const status = document.querySelector('#status');
+const anyWaterway = document.querySelector('#any-waterway');
 
-function showWaterwayPopup(e) {
-  'use strict';
-  const description = e.features[0].properties;
+let lastPosition = null;
 
-  // At cached zooms the stream layer is merged into a single geometry to
-  // keep tiles small, so individual ways have no id and there is nothing to
-  // look up. Zooming in past the cache threshold (see CACHE_BELOW_ZOOM_LEVEL)
-  // un-merges them and makes them clickable again.
-  if (description.osm_way_id === undefined) {
-    return;
-  }
-
-  let html = '<div class="container">';
-
-  fetch(`/rivers/river-sections/${description.osm_way_id}/popup_data/`)
-    .then((response) => response.json())
-    .then((data) => {
-      for (const key of Object.keys(data)) {
-        const value = data[key];
-        html += '<div class="row">';
-        html += `<p class="col-5" style="text-wrap: pretty;">${key}</p>`;
-
-        if (value.hasOwnProperty('link')) {
-          html += `<a class="col-7" style="text-wrap: pretty;" href="${value.link}" target="_blank">${value.text}</a>`;
-        } else {
-          html += `<p class="col-7" style="text-wrap: pretty;">${value.text}</p>`;
-        }
-        html += `</div>`;
-      }
-      html += '</div>';
-
-      new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-    });
+function setSelection({ river, intermittent, line }) {
+  setRiver(river, { intermittent });
+  lineToRiver = line;
+  map.getSource('line_to_river')?.setData(line);
 }
 
-map.on('click', 'river-sections', showWaterwayPopup);
-map.on('click', 'stream-sections', showWaterwayPopup);
-
-map.on('click', 'line_to_river', (e) => {
+// Closing the result card un-selects everything it was describing.
+function clearSelection() {
   'use strict';
+  riverCard.hidden = true;
+  setFinderCollapsed(false);
+  setSelection({ river: EMPTY, line: EMPTY });
+  marker.remove();
+  popup.remove();
+  flow.stop();
+  lastPosition = null;
+}
 
-  let html = `<div class="container"><p>Distance to the closest river: ${distanceToClosestRiver}km</p></div>`;
+document
+  .querySelector('#river-card-close')
+  .addEventListener('click', clearSelection);
 
-  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
-});
-
-const nav = new maplibregl.NavigationControl({ showCompass: false });
-map.addControl(nav, 'top-right');
-
-map.addControl(new RulerControl(), 'top-right');
-
-const scale = new maplibregl.ScaleControl({
-  maxWidth: 80,
-  unit: 'metric',
-});
-map.addControl(scale);
-
-const compassControl = new maplibregl.NavigationControl({
-  showCompass: true,
-  showZoom: false,
-});
-map.addControl(compassControl, 'bottom-left');
-
-changeCursorOnHover(map, 'river');
-changeCursorOnHover(map, 'river-sections');
-changeCursorOnHover(map, 'stream-sections');
-changeCursorOnHover(map, 'line_to_river');
-
-const marker = new maplibregl.Marker();
+// Fill a result field, hiding its row entirely when there is nothing to show
+// rather than leaving an empty label.
+function setField(element, text, href) {
+  'use strict';
+  const row = element.closest('dl > div');
+  element.textContent = text || '';
+  if (href !== undefined) {
+    element.href = text ? href : '';
+  }
+  if (row) {
+    row.hidden = !text;
+  }
+}
 
 function mapPosition(latitude, longitude) {
   'use strict';
-  const status = document.querySelector('#status');
-
   const name = document.querySelector('#name');
+  const eyebrow = document.querySelector('#river-card-eyebrow');
   const wikipedia = document.querySelector('#wikipedia');
   const destination = document.querySelector('#destination');
   const distance = document.querySelector('#distance');
 
-  name.textContent = '';
-  wikipedia.textContent = '';
-  destination.textContent = '';
-  status.textContent = '';
-  distance.textContent = '';
+  const includeStreams = anyWaterway.checked;
+  const noun = includeStreams ? 'waterway' : 'river';
+
+  lastPosition = [latitude, longitude];
+  riverCard.hidden = true;
+  status.textContent = `Finding the nearest ${noun}…`;
 
   marker.setLngLat([longitude, latitude]).addTo(map);
 
   map.flyTo({
     center: [longitude, latitude],
     zoom: 12,
+    padding: cameraPadding(),
     essential: true, // this animation is considered essential with respect to prefers-reduced-motion
   });
 
-  fetch(`rivers/closest_river/${latitude}/${longitude}`)
+  const query = includeStreams ? '?waterway=any' : '';
+  fetch(`/rivers/closest_river/${latitude}/${longitude}/${query}`)
     .then((response) => response.json())
     .then((data) => {
-      // result.textContent = JSON.stringify(data, null, 4);
-      if (data.section.river) {
-        name.textContent = data.river.name;
-        name.href = `/rivers/${data.river.osm_id}/`;
-        if (data.river.destination) {
-          destination.textContent = data.river.destination;
-        }
+      const feature = data.section.river ? data.river : data.section;
 
-        if (data.river.wikipedia) {
-          wikipedia.textContent = data.river.wikipedia;
-          wikipedia.href = `https://en.wikipedia.org/wiki/${data.river.wikipedia}`;
-        }
+      eyebrow.textContent = `Your closest ${noun}`;
+      name.textContent = data.name;
+      if (data.section.river) {
+        name.href = `/rivers/${data.river.osm_id}/`;
       } else {
-        name.textContent = data.section?.name;
-        destination.textContent = data.section?.destination;
-        wikipedia.textContent = data.section?.wikipedia;
-        wikipedia.href = `https://en.wikipedia.org/wiki/${data.section?.wikipedia}`;
+        name.removeAttribute('href');
       }
-      distance.textContent = `${data.distance}km`;
+      setField(destination, feature?.destination);
+      setField(
+        wikipedia,
+        feature?.wikipedia,
+        `https://en.wikipedia.org/wiki/${feature?.wikipedia}`,
+      );
+      setField(distance, `${data.distance} km`);
+      document.querySelector('#river-card-intermittent').hidden =
+        !data.intermittent;
 
       distanceToClosestRiver = data.distance;
+      status.textContent = '';
+      riverCard.hidden = false;
+      // Before fitting the camera, which measures what is left uncovered.
+      setFinderCollapsed(true);
 
-      map.getSource('line_to_river').setData({
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            [longitude, latitude],
-            [data.closest_point_on_river[0], data.closest_point_on_river[1]],
-          ],
+      setSelection({
+        river: data.geometry ? JSON.parse(data.geometry) : EMPTY,
+        intermittent: data.intermittent,
+        line: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [[longitude, latitude], data.closest_point_on_river],
+          },
         },
       });
+      flow.start();
 
-      if (data.geometry) {
-        map.getSource('river').setData(JSON.parse(data.geometry));
-      }
+      map.fitBounds(
+        new maplibregl.LngLatBounds(
+          [longitude, latitude],
+          [longitude, latitude],
+        ).extend(data.closest_point_on_river),
+        { padding: cameraPadding(), maxZoom: 13, essential: true },
+      );
+    })
+    .catch(() => {
+      status.textContent = `Couldn't find a ${noun} near there. Try again?`;
     });
 }
+
+// Remember the switch between visits, and re-run the current search when it
+// changes so the result always matches what the switch says.
+try {
+  anyWaterway.checked = localStorage.getItem('anyWaterway') === 'true';
+} catch {
+  // Storage blocked: default to rivers only.
+}
+anyWaterway.addEventListener('change', () => {
+  'use strict';
+  try {
+    localStorage.setItem('anyWaterway', String(anyWaterway.checked));
+  } catch {
+    // Storage blocked: the choice just won't persist.
+  }
+  if (lastPosition) {
+    mapPosition(...lastPosition);
+  }
+});
 
 const geocoderApi = {
   forwardGeocode: async (config) => {
@@ -367,8 +248,6 @@ const geocoderApi = {
         };
         features.push(point);
       }
-      const point = features[0].geometry.coordinates;
-      mapPosition(point[1], point[0]);
     } catch (e) {
       console.error(`Failed to forwardGeocode with error: ${e}`);
     }
@@ -378,23 +257,27 @@ const geocoderApi = {
     };
   },
 };
-map.addControl(new SearchButtonControl(), 'top-left');
-map.addControl(
-  new MaplibreGeocoder(geocoderApi, {
-    maplibregl,
-    zoom: 12,
-    flyTo: {
-      zoom: 12,
-      essential: true,
-    },
-  }),
-  'top-left',
-);
+// mapPosition moves the camera itself, so the geocoder doesn't.
+const geocoder = new MaplibreGeocoder(geocoderApi, {
+  maplibregl,
+  placeholder: 'Search for a place',
+  flyTo: false,
+  marker: false,
+});
+document.querySelector('#geocoder').appendChild(geocoder.onAdd(map));
+
+// Search once a place is chosen (a suggestion, or Enter for the first), not
+// while typing: on phones the finder folds away on a result, and that would
+// pull the suggestions out from under the user. The geocoder refocuses its
+// input after a pick; let go of it so the phone keyboard closes too.
+geocoder.on('result', ({ result }) => {
+  finder.querySelector('.maplibregl-ctrl-geocoder--input')?.blur();
+  const [longitude, latitude] = result.center;
+  mapPosition(latitude, longitude);
+});
 
 function geolocateAndFindRiver() {
   'use strict';
-  const status = document.querySelector('#status');
-
   function success(position) {
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;

@@ -105,21 +105,27 @@ class WaterwayVectorLayer(VectorLayer):
         snapped = "ST_RemoveRepeatedPoints(ST_SnapToGrid(geometry, %(px)s), %(px)s)"
 
         if self.merge_when_cached:
+            # One merged feature per tile for permanent water and one for
+            # intermittent, so the map can still draw them differently.
             projection = (
+                "intermittent, "
                 f"ST_AsMVTGeom(ST_LineMerge(ST_Collect({snapped})), {envelope}, "
                 f"{TILE_EXTENT}, {TILE_BUFFER}, true) AS geom"
             )
+            group_by = "GROUP BY intermittent"
         else:
             projection = (
-                f"osm_way_id, ST_AsMVTGeom({snapped}, {envelope}, "
+                f"osm_way_id, intermittent, ST_AsMVTGeom({snapped}, {envelope}, "
                 f"{TILE_EXTENT}, {TILE_BUFFER}, true) AS geom"
             )
+            group_by = ""
 
         return f"""
             SELECT ST_AsMVT(q, %(layer)s, {TILE_EXTENT}, 'geom') FROM (
                 SELECT {projection}
                 FROM {table}
                 WHERE waterway = %(waterway)s AND geometry && {envelope}
+                {group_by}
             ) q WHERE q.geom IS NOT NULL
         """  # noqa: S608
 
@@ -131,23 +137,30 @@ class WaterwayVectorLayer(VectorLayer):
         zoom level, so there is no overzoom to reveal the quantisation. Left
         unsnapped, a dense zoom 10 tile is an order of magnitude bigger for no
         visible gain.
+
+        The intermittent flag still comes from waterway_tile, by primary key:
+        for a relation member it is the river's verdict, which the way's own
+        tags cannot give.
         """
         table = f'"{settings.OSM_SCHEMA}"."waterway_section"'
+        tile_table = f'"{settings.OSM_SCHEMA}"."waterway_tile"'
         envelope = self._tile_envelope()
         snapped = (
             "ST_RemoveRepeatedPoints("
-            "ST_SnapToGrid(ST_Transform(geometry, 3857), %(px)s), %(px)s)"
+            "ST_SnapToGrid(ST_Transform(s.geometry, 3857), %(px)s), %(px)s)"
         )
         return f"""
             SELECT ST_AsMVT(q, %(layer)s, {TILE_EXTENT}, 'geom') FROM (
-                SELECT osm_way_id,
+                SELECT s.osm_way_id,
+                       COALESCE(t.intermittent, false) AS intermittent,
                        ST_AsMVTGeom({snapped}, {envelope},
                                     {TILE_EXTENT}, {TILE_BUFFER}, true) AS geom
-                FROM {table}
+                FROM {table} s
+                LEFT JOIN {tile_table} t ON t.osm_way_id = s.osm_way_id
                 -- Compared in 4326 so the GiST index on the canonical
                 -- geometry column can be used.
-                WHERE waterway = %(waterway)s
-                  AND geometry && ST_Transform({envelope}, 4326)
+                WHERE s.waterway = %(waterway)s
+                  AND s.geometry && ST_Transform({envelope}, 4326)
             ) q WHERE q.geom IS NOT NULL
         """  # noqa: S608
 
@@ -209,7 +222,10 @@ class RiverSectionVectorLayer(WaterwayVectorLayer):
     id = "river-sections"
     description = "OSM ways forming a river"
     waterway = "river"
-    layer_fields = {"osm_way_id": "OSM way id, for the popup lookup"}
+    layer_fields = {
+        "osm_way_id": "OSM way id, for the popup lookup",
+        "intermittent": "Dry for part of the year",
+    }
     merge_when_cached = False
 
 
@@ -225,5 +241,8 @@ class StreamSectionVectorLayer(WaterwayVectorLayer):
     id = "stream-sections"
     description = "OSM ways forming a stream"
     waterway = "stream"
-    layer_fields = {"osm_way_id": "OSM way id; absent at cached zooms, when merged"}
+    layer_fields = {
+        "osm_way_id": "OSM way id; absent at cached zooms, when merged",
+        "intermittent": "Dry for part of the year",
+    }
     merge_when_cached = True

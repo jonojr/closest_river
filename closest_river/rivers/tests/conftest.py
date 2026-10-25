@@ -51,6 +51,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS waterway_membership_river_osm_id_sequence_idx
 CREATE TABLE IF NOT EXISTS osm.waterway_tile (
     osm_way_id bigint PRIMARY KEY,
     waterway text NOT NULL,
+    intermittent boolean NOT NULL DEFAULT false,
     geometry geometry(LineString, 3857) NOT NULL
 );
 

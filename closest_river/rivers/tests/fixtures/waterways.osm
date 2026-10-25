@@ -40,12 +40,14 @@
     <nd ref="5"/>
     <tag k="waterway" v="stream"/>
     <tag k="name" v="Test Stream"/>
+    <tag k="intermittent" v="yes"/>
   </way>
   <way id="102" version="1">
     <nd ref="3"/>
     <nd ref="6"/>
     <tag k="waterway" v="river"/>
     <tag k="name" v="Test Side Channel"/>
+    <tag k="seasonal" v="wet_season"/>
   </way>
   <way id="103" version="1">
     <nd ref="7"/>

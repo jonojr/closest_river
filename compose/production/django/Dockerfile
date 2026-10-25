@@ -6,6 +6,14 @@ WORKDIR ${APP_HOME}
 COPY ./package.json ${APP_HOME}
 RUN npm install && npm cache clean --force
 COPY . ${APP_HOME}
+# Baked into the map bundles at build time. .envs/ is in .dockerignore, so this
+# is the only way the key reaches the build; without it the maps load with no
+# basemap, so refuse to build rather than ship that. The key is public anyway
+# (it is in the JS every visitor downloads), and this stage is not in the final
+# image.
+ARG MAPTILER_API_KEY
+RUN test -n "${MAPTILER_API_KEY}" \
+  || { echo "MAPTILER_API_KEY build arg is not set; see docker-compose.production.yml" >&2; exit 1; }
 RUN npm run build
 # define an alias for the specific python version used in this file.
 FROM docker.io/python:3.12.13-slim-trixie AS python
@@ -43,8 +51,12 @@ ENV BUILD_ENV=${BUILD_ENVIRONMENT}
 
 WORKDIR ${APP_HOME}
 
-RUN addgroup --system django \
-    && adduser --system --ingroup django django
+# Pinned to 1000:1000 so the bind-mounted host directories (the osmworker's
+# /data, media) can be chowned once and stay writable across rebuilds;
+# --system alone picks whatever id is free at build time. useradd warns that
+# 1000 is above SYS_UID_MAX, which is harmless.
+RUN addgroup --system --gid 1000 django \
+    && adduser --system --uid 1000 --ingroup django django
 
 
 # Install required system dependencies
