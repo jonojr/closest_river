@@ -51,8 +51,12 @@ ENV BUILD_ENV=${BUILD_ENVIRONMENT}
 
 WORKDIR ${APP_HOME}
 
-RUN addgroup --system django \
-    && adduser --system --ingroup django django
+# Pinned to 1000:1000 so the bind-mounted host directories (the osmworker's
+# /data, media) can be chowned once and stay writable across rebuilds;
+# --system alone picks whatever id is free at build time. useradd warns that
+# 1000 is above SYS_UID_MAX, which is harmless.
+RUN addgroup --system --gid 1000 django \
+    && adduser --system --uid 1000 --ingroup django django
 
 
 # Install required system dependencies
