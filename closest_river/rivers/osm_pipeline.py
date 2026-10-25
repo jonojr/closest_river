@@ -17,9 +17,9 @@ import logging
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 from collections import deque
+from http import HTTPStatus
 from pathlib import Path
 
 import requests
@@ -42,11 +42,14 @@ DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
 
 # How often the long-running steps report how far they have got.
 DOWNLOAD_PROGRESS_SECONDS = 60
-OSM2PGSQL_PROGRESS_SECONDS = 30
+DOWNLOAD_ATTEMPTS = 10
+DOWNLOAD_RETRY_SECONDS = 30
+COMMAND_PROGRESS_SECONDS = 30
 
-# osm2pgsql rewrites one progress line several times a second
-# ("Processing: Node(1234k 567.8k/s) Way(...)"); these are throttled.
-_PROGRESS_LINE = re.compile(r"Processing: ")
+# Progress lines a command rewrites several times a second; these are
+# throttled. osm2pgsql's "Processing: Node(1234k 567.8k/s) Way(...)", and
+# pmtiles' bar, "fetching chunks  44% |███████    | (2.4/5.3 MB, 1.2 MB/s)".
+_PROGRESS_LINE = re.compile(r"Processing: |\d+% \|")
 
 # Output kept for the error message when a command fails.
 _OUTPUT_TAIL_LINES = 50
@@ -111,12 +114,12 @@ def _run(command: list[str], *, description: str) -> None:
             line = raw.strip()
             if not line:
                 continue
-            tail.append(line)
             if _PROGRESS_LINE.search(line):
                 now = time.monotonic()
-                if last_progress and now - last_progress < OSM2PGSQL_PROGRESS_SECONDS:
+                if last_progress and now - last_progress < COMMAND_PROGRESS_SECONDS:
                     continue
                 last_progress = now
+            tail.append(line)
             logger.info("%s | %s", description, line)
 
     elapsed = format_duration(time.monotonic() - started)
@@ -147,55 +150,75 @@ def data_dir() -> Path:
     return path
 
 
-def download_planet(*, url: str | None = None, destination: Path | None = None) -> Path:
-    """Stream the planet PBF to disk and verify its published MD5.
+def download(url: str, destination: Path, *, md5: str | None = None) -> Path:
+    """Stream a large file to disk, resuming after a dropped connection.
 
-    Streamed in chunks and written to a temporary file first: the file is tens
-    of gigabytes, so it can neither be held in memory nor left half-written
-    where a later step would treat it as complete.
+    The planet files are tens to hundreds of gigabytes, and a connection
+    dropped partway is routine at that size, so each retry asks for only the
+    bytes still missing. Written to a partial file beside the destination and
+    renamed over it once complete (and matching ``md5``, if given), so nothing
+    ever treats a half-written file as the real one.
     """
-    url = url or settings.OSM_PLANET_URL
-    destination = destination or (data_dir() / "planet-latest.osm.pbf")
-
-    logger.info("Downloading %s to %s", url, destination)
+    temporary = destination.with_name(f".{destination.name}.partial")
+    temporary.unlink(missing_ok=True)
     digest = hashlib.md5()  # noqa: S324  # MD5 is what planet.openstreetmap.org publishes
     started = time.monotonic()
+    last_report = started
+    total = 0
 
-    with tempfile.NamedTemporaryFile(
-        dir=destination.parent,
-        prefix=".planet-download-",
-        delete=False,
-    ) as temporary:
-        temporary_path = Path(temporary.name)
+    logger.info("Downloading %s to %s", url, destination)
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        offset = temporary.stat().st_size if temporary.exists() else 0
+        headers = {"Range": f"bytes={offset}-"} if offset else {}
         try:
-            with requests.get(url, stream=True, timeout=(30, 600)) as response:
+            with requests.get(
+                url,
+                headers=headers,
+                stream=True,
+                timeout=(30, 600),
+            ) as response:
                 response.raise_for_status()
-                total = int(response.headers.get("Content-Length") or 0)
-                received = 0
-                last_report = started
-                for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
-                    temporary.write(chunk)
-                    digest.update(chunk)
-                    received += len(chunk)
-                    now = time.monotonic()
-                    if now - last_report >= DOWNLOAD_PROGRESS_SECONDS:
-                        last_report = now
-                        _log_download_progress(received, total, now - started)
+                if offset and response.status_code != HTTPStatus.PARTIAL_CONTENT:
+                    logger.warning("%s ignored the range; starting again", url)
+                    offset = 0
+                    digest = hashlib.md5()  # noqa: S324
+                if length := response.headers.get("Content-Length"):
+                    total = offset + int(length)
+                received = offset
+                with temporary.open("ab" if offset else "wb") as file:
+                    for chunk in response.iter_content(DOWNLOAD_CHUNK_BYTES):
+                        file.write(chunk)
+                        digest.update(chunk)
+                        received += len(chunk)
+                        now = time.monotonic()
+                        if now - last_report >= DOWNLOAD_PROGRESS_SECONDS:
+                            last_report = now
+                            _log_download_progress(received, total, now - started)
+            if total and received < total:
+                msg = f"connection closed at {received} of {total} bytes"
+                raise requests.ConnectionError(msg)
+            break
         except requests.RequestException as error:
-            temporary_path.unlink(missing_ok=True)
-            msg = f"Failed to download {url}"
-            raise OsmPipelineError(msg) from error
+            if attempt == DOWNLOAD_ATTEMPTS:
+                temporary.unlink(missing_ok=True)
+                msg = f"Failed to download {url} after {attempt} attempts"
+                raise OsmPipelineError(msg) from error
+            logger.warning(
+                "Download of %s interrupted (%s); resuming in %ss, attempt %s of %s",
+                url,
+                error,
+                DOWNLOAD_RETRY_SECONDS,
+                attempt + 1,
+                DOWNLOAD_ATTEMPTS,
+            )
+            time.sleep(DOWNLOAD_RETRY_SECONDS)
 
-    expected = _fetch_expected_md5(f"{url}.md5")
-    if expected and digest.hexdigest() != expected:
-        temporary_path.unlink(missing_ok=True)
-        msg = (
-            f"Checksum mismatch for {url}: "
-            f"expected {expected}, got {digest.hexdigest()}"
-        )
+    if md5 and digest.hexdigest() != md5:
+        temporary.unlink(missing_ok=True)
+        msg = f"Checksum mismatch for {url}: expected {md5}, got {digest.hexdigest()}"
         raise OsmPipelineError(msg)
 
-    temporary_path.replace(destination)
+    temporary.replace(destination)
     elapsed = time.monotonic() - started
     size = destination.stat().st_size
     logger.info(
@@ -206,6 +229,18 @@ def download_planet(*, url: str | None = None, destination: Path | None = None) 
         size / 1e6 / max(elapsed, 1),
     )
     return destination
+
+
+def download_planet(*, url: str | None = None, destination: Path | None = None) -> Path:
+    """Download the planet PBF and verify its published MD5.
+
+    The checksum is fetched first, so a planet replaced by a newer one partway
+    through (they are published weekly) fails the check rather than being
+    resumed into a mix of the two.
+    """
+    url = url or settings.OSM_PLANET_URL
+    destination = destination or (data_dir() / "planet-latest.osm.pbf")
+    return download(url, destination, md5=_fetch_expected_md5(f"{url}.md5"))
 
 
 def _log_download_progress(received: int, total: int, elapsed: float) -> None:

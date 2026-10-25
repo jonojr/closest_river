@@ -3,8 +3,8 @@
 Everything the map's background needs, written to BASEMAP_DIR, which nginx
 serves as /tiles/:
 
-* ``basemap.pmtiles`` — Protomaps vector tiles, cut from the latest daily
-  planet build.
+* ``basemap.pmtiles`` — Protomaps vector tiles from the latest daily planet
+  build: downloaded whole for the planet, or cut down to BASEMAP_BBOX.
 * ``terrain.pmtiles`` — Mapterhorn elevation, for the Terrain basemap's
   hillshade and contours.
 * ``fonts/`` and ``sprites/v4/`` — the glyphs and icons the Protomaps styles
@@ -23,6 +23,7 @@ import logging
 import shutil
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 import requests
@@ -30,6 +31,7 @@ from django.conf import settings
 
 from closest_river.rivers.osm_pipeline import OsmPipelineError
 from closest_river.rivers.osm_pipeline import _run
+from closest_river.rivers.osm_pipeline import download
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,14 @@ TERRAIN_FILE = "terrain.pmtiles"
 PROTOMAPS_BUILDS_URL = "https://build-metadata.protomaps.dev/builds.json"
 PROTOMAPS_BUILD_URL = "https://build.protomaps.com/{key}"
 MAPTERHORN_URL = "https://download.mapterhorn.com/planet.pmtiles"
+# The deepest zoom in the Protomaps daily builds.
+PROTOMAPS_MAXZOOM = 15
 ASSETS_URL = "https://codeload.github.com/protomaps/basemaps-assets/tar.gz/{ref}"
+
+# pmtiles extract does not retry a dropped connection, and cannot resume:
+# the planet basemap once failed 20 minutes in on an HTTP/2 stream reset.
+EXTRACT_ATTEMPTS = 3
+EXTRACT_RETRY_SECONDS = 60
 
 # What the styles use from basemaps-assets; the repository also carries the
 # older v3 sprites.
@@ -79,11 +88,22 @@ def extract(source: str, destination: Path, *, maxzoom: int, bbox: str = "") -> 
     command = [PMTILES_BIN, "extract", source, str(temporary), f"--maxzoom={maxzoom}"]
     if bbox:
         command.append(f"--bbox={bbox}")
-    try:
-        _run(command, description=f"Extracting {destination.name}")
-    except OsmPipelineError:
-        temporary.unlink(missing_ok=True)
-        raise
+    for attempt in range(1, EXTRACT_ATTEMPTS + 1):
+        try:
+            _run(command, description=f"Extracting {destination.name}")
+            break
+        except OsmPipelineError:
+            temporary.unlink(missing_ok=True)
+            if attempt == EXTRACT_ATTEMPTS:
+                raise
+            logger.warning(
+                "Extracting %s failed (attempt %s of %s); retrying in %ss",
+                destination.name,
+                attempt,
+                EXTRACT_ATTEMPTS,
+                EXTRACT_RETRY_SECONDS,
+            )
+            time.sleep(EXTRACT_RETRY_SECONDS)
 
     temporary.replace(destination)
     logger.info(
@@ -95,9 +115,15 @@ def extract(source: str, destination: Path, *, maxzoom: int, bbox: str = "") -> 
 
 
 def fetch_basemap(*, source: str | None = None) -> Path:
+    source = source or latest_protomaps_build()
+    destination = basemap_dir() / BASEMAP_FILE
+    if not settings.BASEMAP_BBOX and settings.BASEMAP_MAXZOOM >= PROTOMAPS_MAXZOOM:
+        # The whole build, so there is nothing to cut: a plain download, which
+        # unlike pmtiles extract can resume after a dropped connection.
+        return download(source, destination)
     return extract(
-        source or latest_protomaps_build(),
-        basemap_dir() / BASEMAP_FILE,
+        source,
+        destination,
         maxzoom=settings.BASEMAP_MAXZOOM,
         bbox=settings.BASEMAP_BBOX,
     )
