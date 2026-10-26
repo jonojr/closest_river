@@ -8,7 +8,12 @@ import '@mapbox-controls/ruler/src/index.css';
 import RulerControl from '@mapbox-controls/ruler';
 import * as maplibregl from 'maplibre-gl';
 import { BASEMAPS, SKY, demSource } from './basemapStyles';
-import { animateFlow, chevronImage } from './flowDirection';
+import {
+  animateFlow,
+  chevronImage,
+  flowLayerIds,
+  flowLayers,
+} from './flowDirection';
 import { MapLayersControl } from './MapLayersControl';
 
 // MapLibre can't find its worker script from inside a bundle; this has
@@ -255,7 +260,6 @@ export function createRiverMap({
   const flow = animateFlow(map, 'river-flow');
   const networkFlow = animateFlow(map, 'river-section-flow', {
     stepMs: 90,
-    scale: NETWORK_FLOW_SCALE,
   });
   networkFlow.start();
 
@@ -445,7 +449,7 @@ export function createRiverMap({
     // Subtle downstream drift along every river (see animateFlow). Not below
     // zoom 9: there the network is too dense for movement to mean anything,
     // and it would keep the whole map repainting.
-    map.addLayer(
+    for (const layer of flowLayers(
       {
         id: 'river-section-flow',
         type: 'line',
@@ -464,11 +468,12 @@ export function createRiverMap({
             [9, 0.8],
             [14, 1.4],
           ]),
-          'line-dasharray': [0, 4 * NETWORK_FLOW_SCALE, 3 * NETWORK_FLOW_SCALE],
         },
       },
-      firstSymbolId,
-    );
+      { scale: NETWORK_FLOW_SCALE },
+    )) {
+      map.addLayer(layer, firstSymbolId);
+    }
     // Arrows, separately for each class so hiding intermittent waterways
     // hides their arrows too. Below zoom 10 the arrows are too small to read
     // and just thicken the network into noise.
@@ -552,23 +557,21 @@ export function createRiverMap({
     );
     // Dashes that drift downstream along the highlighted river (see
     // animateFlow).
-    map.addLayer(
-      {
-        id: 'river-flow',
-        type: 'line',
-        source: 'river',
-        filter: PERENNIAL,
-        layout: {
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': colours.selectedRiverFlow,
-          'line-width': 3,
-          'line-dasharray': [0, 4, 3],
-        },
+    for (const layer of flowLayers({
+      id: 'river-flow',
+      type: 'line',
+      source: 'river',
+      filter: PERENNIAL,
+      layout: {
+        'line-join': 'round',
       },
-      firstSymbolId,
-    );
+      paint: {
+        'line-color': colours.selectedRiverFlow,
+        'line-width': 3,
+      },
+    })) {
+      map.addLayer(layer, firstSymbolId);
+    }
     map.addLayer(
       {
         id: 'arrows',
@@ -765,7 +768,7 @@ export function createRiverMap({
         {
           key: 'flow',
           label: 'Animate river flow',
-          layers: ['river-section-flow'],
+          layers: flowLayerIds('river-section-flow'),
         },
       ],
     }),
