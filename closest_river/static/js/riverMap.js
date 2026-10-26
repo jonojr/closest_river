@@ -7,6 +7,7 @@ import '@mapbox-controls/ruler/src/index.css';
 
 import RulerControl from '@mapbox-controls/ruler';
 import * as maplibregl from 'maplibre-gl';
+import { track, trackSetting } from './analytics';
 import { BASEMAPS, SKY, demSource } from './basemapStyles';
 import { animateFlow, chevronImage } from './flowDirection';
 import { MapLayersControl } from './MapLayersControl';
@@ -610,6 +611,7 @@ export function createRiverMap({
     } catch {
       // Storage blocked: the choice just won't persist.
     }
+    trackSetting('terrain-3d', on ? 'on' : 'off');
     // Mid basemap swap the source isn't there yet; style.load applies it.
     applyTerrain3d();
     if (on) {
@@ -644,6 +646,7 @@ export function createRiverMap({
     } catch {
       // Storage blocked: the choice just won't persist.
     }
+    trackSetting('basemap', key);
     reloadBasemap();
   }
 
@@ -713,6 +716,9 @@ export function createRiverMap({
       return;
     }
 
+    track('waterway-click', {
+      kind: feature.layer.id.startsWith('stream') ? 'stream' : 'river',
+    });
     showWaterwayPopup(e.lngLat, sectionId(feature));
   });
 

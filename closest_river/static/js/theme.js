@@ -5,6 +5,8 @@
 // explicit choice is remembered in localStorage, otherwise the theme follows
 // the operating system. Other scripts (the map) listen for 'themechange'.
 
+import { trackSetting } from './analytics';
+
 const STORAGE_KEY = 'theme';
 const root = document.documentElement;
 const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
@@ -54,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Private mode or blocked storage: the choice just won't persist.
     }
     applyTheme(next);
+    trackSetting('theme', next);
   });
 });
 
