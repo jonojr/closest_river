@@ -50,6 +50,17 @@
       <!-- place project specific Javascript in this file -->
       {% render_bundle 'project' 'js' attrs='defer' %}
     {% endblock javascript %}
+    {# Outside the javascript block, which pages override. #}
+    {% if UMAMI_WEBSITE_ID %}
+      <script defer
+              src="{{ UMAMI_SCRIPT_URL }}"
+              data-website-id="{{ UMAMI_WEBSITE_ID }}"></script>
+      {% if UMAMI_SESSION_REPLAY %}
+        <script defer
+                src="{{ UMAMI_RECORDER_URL }}"
+                data-website-id="{{ UMAMI_WEBSITE_ID }}"></script>
+      {% endif %}
+    {% endif %}
   </head>
   <body class="{% block bodyclass %}{% endblock bodyclass %}">
     {% block body %}
