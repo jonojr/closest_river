@@ -8,4 +8,5 @@ def umami(request):
         "UMAMI_SCRIPT_URL": settings.UMAMI_SCRIPT_URL,
         "UMAMI_RECORDER_URL": settings.UMAMI_RECORDER_URL,
         "UMAMI_SESSION_REPLAY": settings.UMAMI_SESSION_REPLAY,
+        "UMAMI_PERFORMANCE": settings.UMAMI_PERFORMANCE,
     }

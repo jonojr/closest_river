@@ -54,7 +54,8 @@
     {% if UMAMI_WEBSITE_ID %}
       <script defer
               src="{{ UMAMI_SCRIPT_URL }}"
-              data-website-id="{{ UMAMI_WEBSITE_ID }}"></script>
+              data-website-id="{{ UMAMI_WEBSITE_ID }}"
+              {% if UMAMI_PERFORMANCE %}data-performance="true"{% endif %}></script>
       {% if UMAMI_SESSION_REPLAY %}
         <script defer
                 src="{{ UMAMI_RECORDER_URL }}"

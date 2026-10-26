@@ -395,6 +395,9 @@ UMAMI_RECORDER_URL = env("UMAMI_RECORDER_URL", default="/recorder.js")
 # Also load the session replay recorder. Replays must be turned on for the
 # website in Umami as well; this only adds the script.
 UMAMI_SESSION_REPLAY = env.bool("UMAMI_SESSION_REPLAY", default=False)
+# Have the tracker report each page's Core Web Vitals (TTFB, FCP, LCP, CLS and
+# INP). Anonymous timings, sent to the same /api/send as everything else.
+UMAMI_PERFORMANCE = env.bool("UMAMI_PERFORMANCE", default=True)
 
 # django-allauth
 # ------------------------------------------------------------------------------
