@@ -52,30 +52,66 @@ const FLOW_DASH_STEPS = [
   [0, 3.5, 3, 0.5],
 ];
 
-// Animate a dashed line layer so the dashes drift downstream. Falls back to a
-// static dash for people who have asked for reduced motion.
+// A flowing line as one copy of `layer` per dash step, for animateFlow. The
+// copies have ids `${layer.id}-0` and up, and only the first is visible.
 //
-// Options: stepMs sets the speed; scale stretches the dash pattern (dash units
-// are multiples of the line width, so thin lines need a larger scale to get
-// readable dashes). The layer's initial line-dasharray should be
-// [0, 4 * scale, 3 * scale].
+// MapLibre 5.8 and later rebuild every tile of a source whenever a layer's
+// line-dasharray changes, even to another constant, so stepping one layer's
+// dashes reloaded the river tiles about 100 times a second, which slow phones
+// can't keep up with. Each copy keeps its dashes, and animateFlow switches
+// between them with line-opacity, which is only a repaint; a copy at opacity
+// 0 isn't drawn.
+//
+// scale stretches the dash pattern (dash units are multiples of the line
+// width, so thin lines need a larger scale to get readable dashes).
+export function flowLayers(layer, { scale = 1 } = {}) {
+  const opacity = layer.paint?.['line-opacity'] ?? 1;
+  return FLOW_DASH_STEPS.map((dashes, step) => ({
+    ...layer,
+    id: flowLayerId(layer.id, step),
+    paint: {
+      ...layer.paint,
+      'line-dasharray': dashes.map((d) => d * scale),
+      'line-opacity': step === 0 ? opacity : 0,
+    },
+  }));
+}
+
+function flowLayerId(id, step) {
+  return `${id}-${step}`;
+}
+
+// Every copy's id, for anything that shows or hides the whole flow.
+export function flowLayerIds(id) {
+  return FLOW_DASH_STEPS.map((_, step) => flowLayerId(id, step));
+}
+
+// Animate a flow added with flowLayers so the dashes drift downstream. Falls
+// back to static dashes for people who have asked for reduced motion.
+//
+// Options: stepMs sets the speed.
 //
 // Returns { start, stop }: stop it while nothing is selected so the map isn't
 // repainting continuously while it sits idle. Safe to leave running across a
-// style change, and costs nothing while the layer is missing, hidden or zoomed
-// out past its minzoom: steps are skipped, so the map isn't repainted.
-export function animateFlow(map, layerId, { stepMs = 60, scale = 1 } = {}) {
+// style change, and costs nothing while the layers are missing, hidden or
+// zoomed out past their minzoom: steps are skipped, so the map isn't
+// repainted.
+export function animateFlow(map, layerId, { stepMs = 60 } = {}) {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  const steps = FLOW_DASH_STEPS.map((dashes) => dashes.map((d) => d * scale));
   let step = 0;
   let last = 0;
   let frameId = null;
 
+  // A style change rebuilds the copies with the first one showing.
+  map.on('style.load', () => {
+    step = 0;
+  });
+
   function isShowing() {
-    const layer = map.getLayer(layerId);
+    const layer = map.getLayer(flowLayerId(layerId, 0));
     return (
       layer !== undefined &&
-      map.getLayoutProperty(layerId, 'visibility') !== 'none' &&
+      map.getLayoutProperty(layer.id, 'visibility') !== 'none' &&
       map.getZoom() >= (layer.minzoom ?? 0)
     );
   }
@@ -83,8 +119,11 @@ export function animateFlow(map, layerId, { stepMs = 60, scale = 1 } = {}) {
   function frame(timestamp) {
     if (!reducedMotion.matches && timestamp - last >= stepMs && isShowing()) {
       last = timestamp;
-      step = (step + 1) % steps.length;
-      map.setPaintProperty(layerId, 'line-dasharray', steps[step]);
+      const showing = flowLayerId(layerId, step);
+      const opacity = map.getPaintProperty(showing, 'line-opacity');
+      step = (step + 1) % FLOW_DASH_STEPS.length;
+      map.setPaintProperty(showing, 'line-opacity', 0);
+      map.setPaintProperty(flowLayerId(layerId, step), 'line-opacity', opacity);
     }
     frameId = requestAnimationFrame(frame);
   }
