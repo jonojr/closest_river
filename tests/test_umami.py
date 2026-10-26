@@ -1,8 +1,8 @@
 """The optional Umami tracking tags in base.html.
 
 What matters: nothing is loaded unless a website ID is configured, the scripts
-come from wherever the settings say, and the session replay recorder only loads
-when separately switched on.
+come from wherever the settings say, the session replay recorder only loads
+when separately switched on, and performance reporting can be switched off.
 """
 
 from html.parser import HTMLParser
@@ -22,14 +22,23 @@ class _ScriptTags(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == "script" and attrs.get("src"):
-            self.tags[attrs["src"]] = attrs.get("data-website-id")
+            self.tags[attrs["src"]] = attrs
+
+
+def _script_tags(client):
+    """Each script on the home page by src, mapped to its attributes."""
+    parser = _ScriptTags()
+    parser.feed(client.get("/").content.decode())
+    return parser.tags
 
 
 def _tracked_scripts(client):
-    """Each script on the home page by src, mapped to its website ID."""
-    parser = _ScriptTags()
-    parser.feed(client.get("/").content.decode())
-    return {src: id_ for src, id_ in parser.tags.items() if id_ is not None}
+    """Each Umami script on the home page by src, mapped to its website ID."""
+    return {
+        src: attrs["data-website-id"]
+        for src, attrs in _script_tags(client).items()
+        if "data-website-id" in attrs
+    }
 
 
 def test_no_tracking_without_a_website_id(client, settings):
@@ -66,3 +75,13 @@ def test_the_scripts_can_come_from_another_host(client, settings):
         "https://umami.example.com/stats.js": WEBSITE_ID,
         "https://umami.example.com/recorder.js": WEBSITE_ID,
     }
+
+
+@pytest.mark.parametrize(("enabled", "expected"), [(True, "true"), (False, None)])
+def test_performance_reporting_can_be_switched_off(client, settings, enabled, expected):
+    settings.UMAMI_WEBSITE_ID = WEBSITE_ID
+    settings.UMAMI_PERFORMANCE = enabled
+
+    tracker = _script_tags(client)["/script.js"]
+
+    assert tracker.get("data-performance") == expected
