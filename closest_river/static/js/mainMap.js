@@ -1,6 +1,6 @@
 import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
 
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
 import { EMPTY, createRiverMap, popupNote } from './riverMap';
 

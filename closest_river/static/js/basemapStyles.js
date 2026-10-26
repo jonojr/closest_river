@@ -8,7 +8,7 @@
 
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import mlcontour from 'maplibre-contour';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { PMTiles, Protocol } from 'pmtiles';
 
 const TILES = `${window.location.origin}/tiles`;
