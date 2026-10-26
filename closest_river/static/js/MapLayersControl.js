@@ -10,6 +10,9 @@
 //   basemap or theme change rebuilds every layer). Add this control after
 //   registering the 'style.load' handler that creates the layers, so it runs
 //   second and finds them in place.
+
+import { trackSetting } from './analytics';
+
 export class MapLayersControl {
   constructor({ basemaps, terrain3d, groups }) {
     this._basemaps = basemaps;
@@ -146,6 +149,7 @@ export class MapLayersControl {
           // Storage blocked: the choice just won't persist.
         }
         this._apply();
+        trackSetting(`layer-${group.key}`, checked ? 'on' : 'off');
       },
     });
   }

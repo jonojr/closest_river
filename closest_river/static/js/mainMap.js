@@ -2,6 +2,7 @@ import '@maplibre/maplibre-gl-geocoder/dist/maplibre-gl-geocoder.css';
 
 import * as maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
+import { track, trackSetting } from './analytics';
 import { EMPTY, createRiverMap, popupNote } from './riverMap';
 
 const finder = document.querySelector('#finder');
@@ -122,7 +123,20 @@ function setField(element, text, href) {
   }
 }
 
-function mapPosition(latitude, longitude) {
+// How a search was made and how it went; never where. `waterways` is read when
+// the search starts, as the switch may change before the answer arrives.
+function trackSearch(method, includeStreams, result) {
+  'use strict';
+  track('search', {
+    method,
+    waterways: includeStreams ? 'any' : 'rivers',
+    result,
+  });
+}
+
+// `method` ('place' or 'my-location') is left out when the any-waterway
+// switch re-runs the last search: that is tracked as the setting change.
+function mapPosition(latitude, longitude, method) {
   'use strict';
   const name = document.querySelector('#name');
   const eyebrow = document.querySelector('#river-card-eyebrow');
@@ -132,6 +146,8 @@ function mapPosition(latitude, longitude) {
 
   const includeStreams = anyWaterway.checked;
   const noun = includeStreams ? 'waterway' : 'river';
+  const searched = (result) =>
+    method && trackSearch(method, includeStreams, result);
 
   lastPosition = [latitude, longitude];
   riverCard.hidden = true;
@@ -196,9 +212,11 @@ function mapPosition(latitude, longitude) {
         ).extend(data.closest_point_on_river),
         { padding: cameraPadding(), maxZoom: 13, essential: true },
       );
+      searched('found');
     })
     .catch(() => {
       status.textContent = `Couldn't find a ${noun} near there. Try again?`;
+      searched('not-found');
     });
 }
 
@@ -216,6 +234,7 @@ anyWaterway.addEventListener('change', () => {
   } catch {
     // Storage blocked: the choice just won't persist.
   }
+  trackSetting('any-waterway', anyWaterway.checked ? 'on' : 'off');
   if (lastPosition) {
     mapPosition(...lastPosition);
   }
@@ -273,7 +292,7 @@ document.querySelector('#geocoder').appendChild(geocoder.onAdd(map));
 geocoder.on('result', ({ result }) => {
   finder.querySelector('.maplibregl-ctrl-geocoder--input')?.blur();
   const [longitude, latitude] = result.center;
-  mapPosition(latitude, longitude);
+  mapPosition(latitude, longitude, 'place');
 });
 
 function geolocateAndFindRiver() {
@@ -281,15 +300,23 @@ function geolocateAndFindRiver() {
   function success(position) {
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
-    mapPosition(latitude, longitude);
+    mapPosition(latitude, longitude, 'my-location');
   }
 
-  function error() {
+  function error(positionError) {
     status.textContent = 'Unable to retrieve your location';
+    trackSearch(
+      'my-location',
+      anyWaterway.checked,
+      positionError.code === positionError.PERMISSION_DENIED
+        ? 'location-denied'
+        : 'location-unavailable',
+    );
   }
 
   if (!navigator.geolocation) {
     status.textContent = 'Geolocation is not supported by your browser';
+    trackSearch('my-location', anyWaterway.checked, 'location-unsupported');
   } else {
     status.textContent = 'Locating…';
     navigator.geolocation.getCurrentPosition(success, error, {
