@@ -72,6 +72,36 @@ dem.manager.getTile = async (url, abortController) => {
 };
 dem.setupMaplibre(maplibregl);
 
+// The elevation as MapLibre reads it, for Terrain's hillshade and for 3D
+// terrain on any basemap (see riverMap.js). Those two get a source each
+// (MapLibre renders worse when they share one), but over the same tiles, so
+// each is still fetched and decoded once.
+export const demSource = () => ({
+  type: 'raster-dem',
+  tiles: [dem.sharedDemProtocolUrl],
+  encoding: 'terrarium',
+  tileSize: 512,
+  maxzoom: TERRAIN_MAXZOOM,
+  attribution: ATTRIBUTION.mapterhorn,
+});
+
+// The sky above the horizon once the 3D map is tilted far enough to see it,
+// fading into a haze over distant terrain.
+export const SKY = {
+  light: {
+    'sky-color': '#9cc7ee',
+    'horizon-color': '#e6edf3',
+    'fog-color': '#e6edf3',
+    'fog-ground-blend': 0.6,
+  },
+  dark: {
+    'sky-color': '#0b1220',
+    'horizon-color': '#243146',
+    'fog-color': '#1a2332',
+    'fog-ground-blend': 0.6,
+  },
+};
+
 const contourTiles = dem.contourProtocolUrl({
   // zoom: [minor, major] interval in metres.
   thresholds: {
@@ -895,14 +925,7 @@ function terrainStyle(theme, colours) {
   return baseStyle(
     theme,
     {
-      terrain: {
-        type: 'raster-dem',
-        tiles: [dem.sharedDemProtocolUrl],
-        encoding: 'terrarium',
-        tileSize: 512,
-        maxzoom: TERRAIN_MAXZOOM,
-        attribution: ATTRIBUTION.mapterhorn,
-      },
+      terrain: demSource(),
       contours: {
         type: 'vector',
         tiles: [contourTiles],
