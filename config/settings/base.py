@@ -207,6 +207,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "closest_river.users.context_processors.allauth_settings",
                 "closest_river.rivers.context_processors.osm_data_freshness",
+                "closest_river.context_processors.umami",
             ],
         },
     },
@@ -380,6 +381,20 @@ BASEMAP_ASSETS_REF = env(
     "BASEMAP_ASSETS_REF",
     default="028c18f713baecad011301ff7a69acc39bcc2ae7",
 )
+
+# Umami analytics
+# ------------------------------------------------------------------------------
+# The website ID from the Umami instance, or empty for no tracking.
+UMAMI_WEBSITE_ID = env("UMAMI_WEBSITE_ID", default="")
+# Where the tracker is served from. The defaults suit a reverse proxy that
+# forwards these paths to Umami; otherwise point them straight at the instance,
+# e.g. https://umami.example.com/script.js. The tracker reports back to wherever
+# it was loaded from.
+UMAMI_SCRIPT_URL = env("UMAMI_SCRIPT_URL", default="/script.js")
+UMAMI_RECORDER_URL = env("UMAMI_RECORDER_URL", default="/recorder.js")
+# Also load the session replay recorder. Replays must be turned on for the
+# website in Umami as well; this only adds the script.
+UMAMI_SESSION_REPLAY = env.bool("UMAMI_SESSION_REPLAY", default=False)
 
 # django-allauth
 # ------------------------------------------------------------------------------
