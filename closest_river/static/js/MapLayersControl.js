@@ -3,14 +3,17 @@
 //
 // basemaps: { options: [{ key, label }], selected, onSelect(key) }. The
 //   control only reports the choice; the map owns swapping the style.
+// terrain3d: { checked, onChange(checked) }, the 3D switch, listed with the
+//   basemaps. Again the map owns turning it on and remembering it.
 // groups: [{ key, label, layers: [layerId, ...] }]. Each group's choice is
 //   remembered in localStorage and re-applied whenever the style reloads (a
 //   basemap or theme change rebuilds every layer). Add this control after
 //   registering the 'style.load' handler that creates the layers, so it runs
 //   second and finds them in place.
 export class MapLayersControl {
-  constructor({ basemaps, groups }) {
+  constructor({ basemaps, terrain3d, groups }) {
     this._basemaps = basemaps;
+    this._terrain3d = terrain3d;
     this._groups = groups;
     this._visible = {};
     for (const group of groups) {
@@ -40,10 +43,18 @@ export class MapLayersControl {
     this._panel.className = 'layer-control__panel';
     this._panel.hidden = true;
     this._panel.append(
-      this._section('Background', this._basemapChoices()),
+      this._section('Background', [
+        ...this._basemapChoices(),
+        this._switch({
+          id: 'terrain-3d-toggle',
+          label: '3D terrain',
+          checked: this._terrain3d.checked,
+          onChange: this._terrain3d.onChange,
+        }),
+      ]),
       this._section(
         'Layers',
-        this._groups.map((group) => this._switch(group)),
+        this._groups.map((group) => this._groupSwitch(group)),
       ),
     );
 
@@ -100,8 +111,7 @@ export class MapLayersControl {
     });
   }
 
-  _switch(group) {
-    const id = `layer-toggle-${group.key}`;
+  _switch({ id, label, checked, onChange }) {
     const wrapper = document.createElement('div');
     wrapper.className = 'form-check form-switch';
 
@@ -110,24 +120,34 @@ export class MapLayersControl {
     input.type = 'checkbox';
     input.role = 'switch';
     input.id = id;
-    input.checked = this._visible[group.key];
-    input.addEventListener('change', () => {
-      this._visible[group.key] = input.checked;
-      try {
-        localStorage.setItem(id, String(input.checked));
-      } catch {
-        // Storage blocked: the choice just won't persist.
-      }
-      this._apply();
-    });
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
 
-    const label = document.createElement('label');
-    label.className = 'form-check-label';
-    label.htmlFor = id;
-    label.textContent = group.label;
+    const text = document.createElement('label');
+    text.className = 'form-check-label';
+    text.htmlFor = id;
+    text.textContent = label;
 
-    wrapper.append(input, label);
+    wrapper.append(input, text);
     return wrapper;
+  }
+
+  _groupSwitch(group) {
+    const id = `layer-toggle-${group.key}`;
+    return this._switch({
+      id,
+      label: group.label,
+      checked: this._visible[group.key],
+      onChange: (checked) => {
+        this._visible[group.key] = checked;
+        try {
+          localStorage.setItem(id, String(checked));
+        } catch {
+          // Storage blocked: the choice just won't persist.
+        }
+        this._apply();
+      },
+    });
   }
 
   _stored(key) {

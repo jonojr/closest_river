@@ -7,7 +7,7 @@ import '@mapbox-controls/ruler/src/index.css';
 
 import RulerControl from '@mapbox-controls/ruler';
 import * as maplibregl from 'maplibre-gl';
-import { BASEMAPS } from './basemapStyles';
+import { BASEMAPS, SKY, demSource } from './basemapStyles';
 import { animateFlow, chevronImage } from './flowDirection';
 import { MapLayersControl } from './MapLayersControl';
 
@@ -31,6 +31,23 @@ function storedBasemap() {
     return DEFAULT_BASEMAP;
   }
 }
+
+const TERRAIN_3D_STORAGE_KEY = 'terrain3d';
+
+function storedTerrain3d() {
+  try {
+    return localStorage.getItem(TERRAIN_3D_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+// The flat map keeps MapLibre's default limit on tilt. 3D lifts it far enough
+// to look along a valley to the horizon, and starts tilted so there is
+// something to see.
+const FLAT_MAX_PITCH = 60;
+const TERRAIN_3D_MAX_PITCH = 85;
+const TERRAIN_3D_PITCH = 60;
 
 // Keep waterway blues in step with $primary in custom_bootstrap_vars.scss.
 const PALETTES = {
@@ -219,6 +236,7 @@ export function createRiverMap({
   extraPopups = {},
 } = {}) {
   let basemap = storedBasemap();
+  let terrain3d = storedTerrain3d();
   const palette = () => PALETTES[BASEMAPS[basemap].tone ?? currentTheme()];
   const basemapStyle = () => BASEMAPS[basemap].style(currentTheme(), palette());
 
@@ -227,6 +245,8 @@ export function createRiverMap({
     style: basemapStyle(),
     center: [135.0951931, -26.3911232],
     zoom: 3, // starting zoom
+    pitch: terrain3d ? TERRAIN_3D_PITCH : 0,
+    maxPitch: terrain3d ? TERRAIN_3D_MAX_PITCH : FLAT_MAX_PITCH,
   });
 
   // The highlighted river, kept outside the map so it can be put back after a
@@ -568,6 +588,47 @@ export function createRiverMap({
 
   map.on('style.load', addRiverLayers);
 
+  // 3D terrain works the same over every basemap, so it is added here rather
+  // than in their styles. Loading a style resets the terrain to the style's
+  // own (none), so this puts it back after every basemap or theme change.
+  function applyTerrain3d() {
+    if (map.getSource('terrain-3d')) {
+      map.setTerrain(terrain3d ? { source: 'terrain-3d' } : null);
+    }
+  }
+
+  map.on('style.load', () => {
+    map.addSource('terrain-3d', demSource());
+    map.setSky(SKY[currentTheme()]);
+    applyTerrain3d();
+  });
+
+  function setTerrain3d(on) {
+    terrain3d = on;
+    try {
+      localStorage.setItem(TERRAIN_3D_STORAGE_KEY, String(on));
+    } catch {
+      // Storage blocked: the choice just won't persist.
+    }
+    // Mid basemap swap the source isn't there yet; style.load applies it.
+    applyTerrain3d();
+    if (on) {
+      map.setMaxPitch(TERRAIN_3D_MAX_PITCH);
+      if (map.getPitch() < TERRAIN_3D_PITCH) {
+        map.easeTo({ pitch: TERRAIN_3D_PITCH });
+      }
+    } else {
+      // Back to flat, then the flat map's tilt limit. Setting the limit
+      // first would snap the camera down to it.
+      map.easeTo({ pitch: 0 });
+      map.once('moveend', () => {
+        if (!terrain3d) {
+          map.setMaxPitch(FLAT_MAX_PITCH);
+        }
+      });
+    }
+  }
+
   // diff: false forces a clean reload so 'style.load' fires and our layers
   // are rebuilt in the palette for the new map.
   function reloadBasemap() {
@@ -681,6 +742,7 @@ export function createRiverMap({
         selected: basemap,
         onSelect: selectBasemap,
       },
+      terrain3d: { checked: terrain3d, onChange: setTerrain3d },
       groups: [
         {
           key: 'streams',
