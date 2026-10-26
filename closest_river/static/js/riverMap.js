@@ -6,10 +6,19 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import '@mapbox-controls/ruler/src/index.css';
 
 import RulerControl from '@mapbox-controls/ruler';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import { BASEMAPS } from './basemapStyles';
 import { animateFlow, chevronImage } from './flowDirection';
 import { MapLayersControl } from './MapLayersControl';
+
+// MapLibre can't find its worker script from inside a bundle; this has
+// webpack emit it as a file of its own and tells MapLibre where.
+maplibregl.setWorkerUrl(
+  new URL(
+    'maplibre-gl/dist/maplibre-gl-worker.mjs',
+    import.meta.url,
+  ).toString(),
+);
 
 const DEFAULT_BASEMAP = 'terrain';
 const BASEMAP_STORAGE_KEY = 'basemap';
