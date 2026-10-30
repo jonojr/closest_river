@@ -962,13 +962,6 @@ function satelliteStyle(colours) {
 // unless the map is the same either way.
 export const BASEMAPS = {
   terrain: { label: 'Terrain', style: terrainStyle },
-  // TEMPORARY: MapTiler's Terrain beside ours, for comparison. Remove before
-  // merging. A saved choice of it falls back to the default once it's gone.
-  terrainMaptiler: {
-    label: 'Terrain (MapTiler)',
-    style: (theme) =>
-      `https://api.maptiler.com/maps/${theme === 'dark' ? 'outdoor-v2-dark' : 'outdoor-v2'}/style.json?key=${process.env.MAPTILER_API_KEY}`,
-  },
   streets: { label: 'Streets', style: streetsStyle },
   satellite: {
     label: 'Satellite',
