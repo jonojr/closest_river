@@ -4,10 +4,12 @@ from vectortiles.views import TileJSONView
 
 from closest_river.rivers.models import River
 from closest_river.rivers.vector_layers import RiverSectionVectorLayer
+from closest_river.rivers.vector_layers import StreamSectionVectorLayer
 
 
 class RiverSectionBaseLayer:
-    layer_classes = [RiverSectionVectorLayer]
+    # Streams first so rivers are drawn over the wash by default.
+    layer_classes = [StreamSectionVectorLayer, RiverSectionVectorLayer]
 
 
 class RiverSectionTileView(RiverSectionBaseLayer, MVTView):

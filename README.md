@@ -7,6 +7,13 @@ A web-app which displays the closest river to the user with some information
 
 License: GPLv3
 
+## OSM data
+
+Waterways come from OpenStreetMap, loaded with osm2pgsql and kept current from
+the daily replication diffs. See [OSM_PIPELINE.md](OSM_PIPELINE.md) for how to
+bootstrap the data, seed a development database from a small extract, and what
+the daily sync and monthly rebuild do.
+
 ## Settings
 
 Moved to [settings](https://cookiecutter-django.readthedocs.io/en/latest/1-getting-started/settings.html).
@@ -88,6 +95,15 @@ The following details how to deploy this application.
 ### Docker
 
 See detailed [cookiecutter-django Docker documentation](https://cookiecutter-django.readthedocs.io/en/latest/3-deployment/deployment-with-docker.html).
+
+The image build needs `MAPTILER_API_KEY` (in the shell or the root `.env`):
+it is baked into the map JavaScript, and the build refuses to run without it.
+
+A second deployment on the same host, such as a test site, must set its own
+project name, image prefix, data directory, env files and host ports, or it
+will overwrite production's containers, images and data. Use a separate clone
+and copy [`compose/production/test-site.env.example`](compose/production/test-site.env.example)
+to its root `.env`.
 
 ### Custom Bootstrap Compilation
 

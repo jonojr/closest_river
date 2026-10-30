@@ -5,6 +5,7 @@ import ssl
 from pathlib import Path
 
 import environ
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent.parent
 # closest_river/
@@ -48,9 +49,14 @@ LOCALE_PATHS = [str(BASE_DIR / "locale")]
 # https://docs.djangoproject.com/en/dev/ref/settings/#databases
 DATABASES = {"default": env.db("DATABASE_URL")}
 DATABASES["default"]["ATOMIC_REQUESTS"] = True
+# The waterway tables live in the osm2pgsql-owned `osm` schema. Putting it on
+# the search_path lets the unmanaged models in rivers/models.py use bare table
+# names; `public` stays first so Django's own tables are unaffected.
+DATABASES["default"].setdefault("OPTIONS", {})
+DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=public,osm"
 DATABASES["default"]["ENGINE"] = "django.contrib.gis.db.backends.postgis"
-# https://docs.djangoproject.com/en/stable/ref/settings/#std:setting-DEFAULT_AUTO_FIELD
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+# DEFAULT_AUTO_FIELD is deliberately unset: BigAutoField is Django's own
+# default from 6.0, and django-upgrade strips the redundant setting.
 
 # URLS
 # ------------------------------------------------------------------------------
@@ -72,6 +78,9 @@ DJANGO_APPS = [
     "django.contrib.admin",
     "django.forms",
     "django.contrib.gis",
+    # Required since Django 6.0 to use ArrayField, which RiverSection.node_ids
+    # does (postgres.E005).
+    "django.contrib.postgres",
 ]
 THIRD_PARTY_APPS = [
     "crispy_forms",
@@ -197,6 +206,8 @@ TEMPLATES = [
                 "django.template.context_processors.tz",
                 "django.contrib.messages.context_processors.messages",
                 "closest_river.users.context_processors.allauth_settings",
+                "closest_river.rivers.context_processors.osm_data_freshness",
+                "closest_river.context_processors.umami",
             ],
         },
     },
@@ -238,7 +249,9 @@ EMAIL_TIMEOUT = 5
 # Django Admin URL.
 ADMIN_URL = "admin/"
 # https://docs.djangoproject.com/en/dev/ref/settings/#admins
-ADMINS = [("""John Roberts""", "me@jonojr.tech")]
+# Address strings, not (name, address) tuples: the tuple form is deprecated in
+# Django 6.0 and removed in 7.0.
+ADMINS = ['"John Roberts" <me@jonojr.tech>']
 # https://docs.djangoproject.com/en/dev/ref/settings/#managers
 MANAGERS = ADMINS
 # https://cookiecutter-django.readthedocs.io/en/latest/settings.html#other-environment-settings
@@ -270,6 +283,11 @@ LOGGING = {
 
 REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
+# The cache runs on its own Redis instance, for two reasons: django-redis
+# implements cache.clear() as FLUSHDB, which on a shared instance would drop the
+# task queue; and cached tiles need memory-capped LRU eviction, which would mean
+# silently losing queued tasks if it were applied to the broker.
+REDIS_CACHE_URL = env("REDIS_CACHE_URL", default="redis://redis-cache:6379/0")
 
 # Celery
 # ------------------------------------------------------------------------------
@@ -298,26 +316,98 @@ CELERY_TASK_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_serializer
 CELERY_RESULT_SERIALIZER = "json"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
-# TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 15 * 24 * 60 * 60
+# Ordinary tasks are short. The OSM import and sync are the exceptions and set
+# their own, much longer, limits on the task itself rather than raising this
+# ceiling for everything.
+CELERY_TASK_TIME_LIMIT = 30 * 60
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
-# TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 14 * 24 * 60 * 60
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
+# The OSM pipeline runs on its own queue, served by a single-concurrency worker
+# in the osmworker container (the only image with osm2pgsql installed). This
+# keeps hours-long, disk-exclusive jobs away from the request-path workers.
+CELERY_TASK_ROUTES = {"closest_river.rivers.tasks.*": {"queue": "osm"}}
+# DatabaseScheduler syncs these into django_celery_beat's tables on startup, so
+# the schedule is reproducible from code rather than hand-made in the admin.
+CELERY_BEAT_SCHEDULE = {
+    "sync-osm-waterways": {
+        "task": "closest_river.rivers.tasks.sync_osm_waterways",
+        "schedule": crontab(hour="3", minute="30"),
+    },
+}
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
+# OSM data pipeline
+# ------------------------------------------------------------------------------
+# Working area for the planet PBF and filtered extracts. Needs several hundred
+# GB; in production this is a bind mount onto the large disk.
+OSM_DATA_DIR = env("OSM_DATA_DIR", default="/data")
+OSM_PLANET_URL = env(
+    "OSM_PLANET_URL",
+    default="https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf",
+)
+# Schema owned by osm2pgsql and read by the unmanaged models in rivers/models.py.
+OSM_SCHEMA = env("OSM_SCHEMA", default="osm")
+# Slim middle tables: large, fully reproducible, and excluded from backups.
+OSM_MIDDLE_SCHEMA = env("OSM_MIDDLE_SCHEMA", default="osm_middle")
+OSM2PGSQL_STYLE = env(
+    "OSM2PGSQL_STYLE",
+    default=str(BASE_DIR / "compose" / "production" / "osm2pgsql" / "waterways.lua"),
+)
+OSM2PGSQL_CACHE_MB = env.int("OSM2PGSQL_CACHE_MB", default=2000)
+OSM_MAX_DIFF_SIZE_MB = env.int("OSM_MAX_DIFF_SIZE_MB", default=500)
+
+# Self-hosted basemap
+# ------------------------------------------------------------------------------
+# Where rivers/basemap.py writes the basemap and terrain archives, fonts and
+# sprites, and where nginx serves them from as /tiles/. Over 200 GB for the
+# planet; in production a bind mount onto the large disk.
+BASEMAP_DIR = env("BASEMAP_DIR", default="/basemap")
+# min_lon,min_lat,max_lon,max_lat to cut both archives down to, or empty for
+# the whole planet. Local development uses Australia.
+BASEMAP_BBOX = env("BASEMAP_BBOX", default="")
+# The Protomaps builds go to zoom 15; the map overzooms past it.
+BASEMAP_MAXZOOM = env.int("BASEMAP_MAXZOOM", default=15)
+# Mapterhorn's tiles are 512 px, so zoom 11 already resolves its global 30 m
+# data; each zoom past it roughly triples the size (92 GB for the planet at
+# 11, 356 GB at 12). Keep in step with TERRAIN_MAXZOOM in basemapStyles.js.
+BASEMAP_TERRAIN_MAXZOOM = env.int("BASEMAP_TERRAIN_MAXZOOM", default=11)
+# protomaps/basemaps-assets commit the fonts and sprites come from: the
+# sprites/v4 set that goes with @protomaps/basemaps 5.
+BASEMAP_ASSETS_REF = env(
+    "BASEMAP_ASSETS_REF",
+    default="028c18f713baecad011301ff7a69acc39bcc2ae7",
+)
+
+# Umami analytics
+# ------------------------------------------------------------------------------
+# The website ID from the Umami instance, or empty for no tracking.
+UMAMI_WEBSITE_ID = env("UMAMI_WEBSITE_ID", default="")
+# Where the tracker is served from. The defaults suit a reverse proxy that
+# forwards these paths to Umami; otherwise point them straight at the instance,
+# e.g. https://umami.example.com/script.js. The tracker reports back to wherever
+# it was loaded from.
+UMAMI_SCRIPT_URL = env("UMAMI_SCRIPT_URL", default="/script.js")
+UMAMI_RECORDER_URL = env("UMAMI_RECORDER_URL", default="/recorder.js")
+# Also load the session replay recorder. Replays must be turned on for the
+# website in Umami as well; this only adds the script.
+UMAMI_SESSION_REPLAY = env.bool("UMAMI_SESSION_REPLAY", default=False)
+# Have the tracker report each page's Core Web Vitals (TTFB, FCP, LCP, CLS and
+# INP). Anonymous timings, sent to the same /api/send as everything else.
+UMAMI_PERFORMANCE = env.bool("UMAMI_PERFORMANCE", default=True)
+
 # django-allauth
 # ------------------------------------------------------------------------------
 ACCOUNT_ALLOW_REGISTRATION = env.bool("DJANGO_ACCOUNT_ALLOW_REGISTRATION", True)
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_LOGIN_METHODS = {"email"}
+# Replaces ACCOUNT_EMAIL_REQUIRED / ACCOUNT_USERNAME_REQUIRED. A trailing "*"
+# marks a field as required.
 # https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_EMAIL_REQUIRED = True
-# https://docs.allauth.org/en/latest/account/configuration.html
-ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
 # https://docs.allauth.org/en/latest/account/configuration.html
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 # https://docs.allauth.org/en/latest/account/configuration.html

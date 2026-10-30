@@ -1,15 +1,17 @@
-{% extends "base.html" %}
+{% extends "error_page.html" %}
 
 {% block title %}
-  Forbidden (403)
+  Forbidden · My closest river
 {% endblock title %}
-{% block content %}
-  <h1>Forbidden (403)</h1>
-  <p>
-    {% if exception %}
-      {{ exception }}
-    {% else %}
-      You're not allowed to access this page.
-    {% endif %}
-  </p>
-{% endblock content %}
+{% block icon %}
+  bi-shield-lock
+{% endblock icon %}
+{% block code %}
+  Error 403
+{% endblock code %}
+{% block heading %}
+  Your request couldn’t be verified
+{% endblock heading %}
+{% block message %}
+  The form may have expired. Go back, refresh the page and try again.
+{% endblock message %}

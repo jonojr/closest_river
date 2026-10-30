@@ -1,5 +1,21 @@
+# Everything that would collide between two deployments on one host is set
+# from the environment: image names, host ports, the data directory and the
+# env files. The defaults are production's, so production needs none of these
+# set. A second deployment on the same host (a test site) sets them all, plus a
+# distinct COMPOSE_PROJECT_NAME, in its own root .env — see
+# compose/production/test-site.env.example.
+#
+# Interpolated by compose from the shell or the root .env:
+#   COMPOSE_PROJECT_NAME    keeps containers, networks and named volumes apart
+#   IMAGE_PREFIX            closest_river_production
+#   DATA_DIR                /mnt/Data/closest_river
+#   ENVS_DIR                ./.envs/.production (may be an absolute host path)
+#   DJANGO_HOST_PORT        5000
+#   NGINX_HOST_PORT         5001
+#   FLOWER_HOST_PORT        5555
+#   MAPTILER_API_KEY        required at build time, baked into the map JS
+
 volumes:
-  production_postgres_data_backups: {}
   production_traefik: {}
   production_redis_data: {}
 
@@ -8,64 +24,130 @@ services:
     build:
       context: .
       dockerfile: ./compose/production/django/Dockerfile
+      target: python-run-stage
+      args:
+        MAPTILER_API_KEY: ${MAPTILER_API_KEY:-}
 
-    image: closest_river_production_django
+    image: ${IMAGE_PREFIX:-closest_river_production}_django
     volumes:
-      - /mnt/Data/closest_river/django_media:/app/closest_river/media:rw
+      - ${DATA_DIR:-/mnt/Data/closest_river}/django_media:/app/closest_river/media:rw
     depends_on:
       - postgres
       - redis
+    # Not required, so the stack still parses where the env files are not in
+    # the checkout (they are never committed), e.g. a stack pulled from git by
+    # a deployment UI. Django will not start without their values, so point
+    # ENVS_DIR at wherever they live on the host.
     env_file:
-      - ./.envs/.production/.django
-      - ./.envs/.production/.postgres
+      - path: ${ENVS_DIR:-./.envs/.production}/.django
+        required: false
+      - path: ${ENVS_DIR:-./.envs/.production}/.postgres
+        required: false
     command: /start
     ports:
-      - 5000:5000
+      - ${DJANGO_HOST_PORT:-5000}:5000
 
   postgres:
     build:
       context: .
       dockerfile: ./compose/production/postgres/Dockerfile
-    image: closest_river_production_postgres
+    image: ${IMAGE_PREFIX:-closest_river_production}_postgres
     volumes:
-      - /mnt/Data/closest_river/postgres:/var/lib/postgresql/data
-      - production_postgres_data_backups:/backups
+      - ${DATA_DIR:-/mnt/Data/closest_river}/postgres:/var/lib/postgresql/data
+      # Backups belong on the big disk alongside the data, not on the root
+      # filesystem where a named volume would put them.
+      - ${DATA_DIR:-/mnt/Data/closest_river}/postgres_backups:/backups
     env_file:
-      - ./.envs/.production/.postgres
+      - path: ${ENVS_DIR:-./.envs/.production}/.postgres
+        required: false
+    # The stock image defaults (128MB shared_buffers, 4MB work_mem, 64MB
+    # maintenance_work_mem) are far too small for a planet-scale bulk load and
+    # for ST_AsMVT at low zoom. Override per-box via the shell or a root .env;
+    # the defaults below assume roughly 16GB of RAM.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-4GB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-12GB}
+      - -c
+      - maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-2GB}
+      - -c
+      - work_mem=${POSTGRES_WORK_MEM:-64MB}
+      - -c
+      - max_wal_size=${POSTGRES_MAX_WAL_SIZE:-8GB}
+      - -c
+      - random_page_cost=${POSTGRES_RANDOM_PAGE_COST:-1.1}
 
+  # Valkey, as in docker-compose.local.yml. It speaks the Redis protocol, so the
+  # service names stay `redis` and `redis-cache` and every redis:// URL, Celery
+  # and django-redis work unchanged.
   redis:
-    image: docker.io/redis:6
+    image: docker.io/valkey/valkey:7
 
     volumes:
       - production_redis_data:/data
 
+  # Separate instance from the broker. Cached tiles are bulky and long-lived,
+  # so this one is memory-capped with LRU eviction — which must never be
+  # applied to the instance holding the Celery queue, where evicting a key
+  # means losing a task. No persistence: it is a cache.
+  redis-cache:
+    image: docker.io/valkey/valkey:7
+    command: >
+      valkey-server
+      --maxmemory ${REDIS_CACHE_MAXMEMORY:-2gb}
+      --maxmemory-policy allkeys-lru
+      --save ""
+
   celeryworker:
     <<: *django
-    image: closest_river_production_celeryworker
+    image: ${IMAGE_PREFIX:-closest_river_production}_celeryworker
     command: /start-celeryworker
     ports: []
 
   celerybeat:
     <<: *django
-    image: closest_river_production_celerybeat
+    image: ${IMAGE_PREFIX:-closest_river_production}_celerybeat
     command: /start-celerybeat
     ports: []
 
   flower:
     <<: *django
-    image: closest_river_production_flower
+    image: ${IMAGE_PREFIX:-closest_river_production}_flower
     command: /start-flower
     ports:
-      - 5555:5555
+      - ${FLOWER_HOST_PORT:-5555}:5555
+
+  osmworker:
+    <<: *django
+    build:
+      context: .
+      dockerfile: ./compose/production/django/Dockerfile
+      target: osm-tools
+      args:
+        MAPTILER_API_KEY: ${MAPTILER_API_KEY:-}
+    image: ${IMAGE_PREFIX:-closest_river_production}_osmworker
+    volumes:
+      # Planet PBF, filtered extracts and replication working files. Needs
+      # several hundred GB free; keep it on the big disk.
+      - ${DATA_DIR:-/mnt/Data/closest_river}/osm:/data:rw
+      # Where fetch_basemap writes the basemap that nginx serves. Over 200 GB
+      # for the planet, and twice the vector archive during a refresh.
+      - ${DATA_DIR:-/mnt/Data/closest_river}/basemap:/basemap:rw
+    command: /start-osmworker
+    ports: []
 
   nginx:
     build:
       context: .
       dockerfile: ./compose/production/nginx/Dockerfile
-    image: closest_river_production_nginx
+    image: ${IMAGE_PREFIX:-closest_river_production}_nginx
     depends_on:
       - django
     volumes:
-      - /mnt/Data/closest_river/django_media:/usr/share/nginx/media:ro
+      - ${DATA_DIR:-/mnt/Data/closest_river}/django_media:/usr/share/nginx/media:ro
+      # The self-hosted basemap, served as /tiles/ (see rivers/basemap.py).
+      - ${DATA_DIR:-/mnt/Data/closest_river}/basemap:/usr/share/nginx/tiles:ro
     ports:
-      - 5001:80
+      - ${NGINX_HOST_PORT:-5001}:80

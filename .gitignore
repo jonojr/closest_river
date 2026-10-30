@@ -89,6 +89,7 @@ yarn-debug.log*
 yarn-error.log*
 
 # Runtime data
+basemap/
 pids
 *.pid
 *.seed
@@ -334,3 +335,4 @@ closest_river/static/webpack_bundles/
 webpack-stats.json
 .env
 .envs/.production
+.envs/.local/*.local

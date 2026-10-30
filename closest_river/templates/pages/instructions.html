@@ -1,21 +1,76 @@
-{% extends "base.html" %}
+{% extends "pages/content_page.html" %}
 
-{% block content %}
-  <div class="m-3">
-    <h1>How to use</h1>
+{% block page_title %}
+  How to use
+{% endblock page_title %}
+{% block eyebrow %}
+  How to use
+{% endblock eyebrow %}
+{% block heading %}
+  Find and follow your closest river
+{% endblock heading %}
+{% block lede %}
+  The map shows rivers with their direction of flow downstream. Browse it to see river systems worldwide, and zoom in to see them locally in more detail.
+{% endblock lede %}
+{% block page_body %}
+  <ol class="steps">
+    <li>
+      <span class="icon-badge" aria-hidden="true"><i class="bi bi-crosshair"></i></span>
+      <div>
+        <h2>Find your closest river</h2>
+        <p>
+          On the <a href="{% url 'home' %}">Map</a> page, press <span class="ui-label">Use my location</span>, or type an address or place into the search box.
+        </p>
+        <p>
+          Your closest river is highlighted in dark blue, with a dotted line showing the distance to it in kilometres. A card shows its name and where it flows into; select the name to open the river’s own page.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="icon-badge" aria-hidden="true"><i class="bi bi-hand-index"></i></span>
+      <div>
+        <h2>Explore the network</h2>
+        <p>
+          Drag and zoom to explore. Arrows along each river point downstream, and once you zoom in, faint moving dashes show the water flowing. Click on any river to find its name and other information that may be available.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="icon-badge" aria-hidden="true"><i class="bi bi-bezier2"></i></span>
+      <div>
+        <h2>Creeks and streams</h2>
+        <p>
+          Smaller water-courses such as creeks and streams are drawn as fainter lines behind the rivers. They are not highlighted as your closest river unless you turn on <span class="ui-label">Include creeks &amp; streams</span>. Waterways without a name are never picked as your closest.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="icon-badge" aria-hidden="true"><i class="bi bi-droplet-half"></i></span>
+      <div>
+        <h2>Intermittent waterways</h2>
+        <p>
+          Rivers and creeks that are often dry, flowing only after rain, are drawn paler and dashed, without moving water. Much of inland Australia is like this.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="icon-badge" aria-hidden="true"><i class="bi bi-sliders"></i></span>
+      <div>
+        <h2>Map controls</h2>
+        <ul>
+          <li>Zoom in and out with the plus and minus buttons in the top right corner.</li>
+          <li>Click the compass to turn the map back to North up the page at any stage.</li>
+          <li>Use the ruler to measure distances on the map.</li>
+          <li>The layers button changes the background map and which waterways are shown.</li>
+          <li>The scale bar is in the bottom right corner.</li>
+        </ul>
+      </div>
+    </li>
+  </ol>
+  <div class="callout mt-4 mb-0" role="note">
+    <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
     <p>
-      The Map page will show rivers highlighted and with directions of flow downstream. Feel free to browse the map to see the river systems worldwide and locally in more detail by zooming in.
+      Before using the app read the <a href="{% url 'cautions' %}">Cautions</a> page and understand the app’s limitations.
     </p>
-    <p>Click on any river to find its name and other information that may be available.</p>
-    <p>
-      Note the scale bar and North point in the bottom left corner. Click on the North point if you wish to re-orientate the map as North up the page at any stage. Note also the plus and minus zoom icon in the top right corner.
-    </p>
-    <p>
-      To search the closest river from the location of a mobile device click on the ‘find my closest river’ search icon shown in blue. Alternatively use the search bar displayed in white and type in an address or location to find the closest river which will then be highlighted in dark blue. A distance to the river will be shown as a dotted line and shown in kilometres.
-    </p>
-    <p>
-      Smaller water-courses such as creeks and streams are only visible when zoomed in, and will not be highlighted as your closest river.
-    </p>
-    <i>Before using the app read the <a href="{% url 'cautions' %}">Cautions</a> page and understand the apps limitations.</i>
   </div>
-{% endblock content %}
+{% endblock page_body %}

@@ -2,12 +2,15 @@ volumes:
   closest_river_local_postgres_data: {}
   closest_river_local_postgres_data_backups: {}
   closest_river_local_redis_data: {}
+  # Working area for downloaded extracts and filtered PBFs.
+  closest_river_local_osm_data: {}
 
 services:
   django: &django
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
+      target: python-run-stage
     image: closest_river_local_django
     container_name: closest_river_local_django
     depends_on:
@@ -35,6 +38,8 @@ services:
       - closest_river_local_postgres_data_backups:/backups
     env_file:
       - ./.envs/.local/.postgres
+    ports:
+      - '5432:5432'
 
   mailpit:
     image: docker.io/axllent/mailpit:latest
@@ -43,11 +48,19 @@ services:
       - '8025:8025'
 
   redis:
-    image: docker.io/redis:6
+    image: valkey/valkey:7
     container_name: closest_river_local_redis
 
     volumes:
       - closest_river_local_redis_data:/data
+
+  # Separate instance from the broker. Cached tiles are bulky and long-lived,
+  # so this one is memory-capped with LRU eviction — which must never be
+  # applied to the instance holding the Celery queue.
+  redis-cache:
+    image: valkey/valkey:7
+    container_name: closest_river_local_redis_cache
+    command: valkey-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ''
 
   celeryworker:
     <<: *django
@@ -79,6 +92,34 @@ services:
       - '5555:5555'
     command: /start-flower
 
+  osmworker:
+    <<: *django
+    build:
+      context: .
+      dockerfile: ./compose/local/django/Dockerfile
+      target: osm-tools
+    image: closest_river_local_osmworker
+    container_name: closest_river_local_osmworker
+    depends_on:
+      - redis
+      - postgres
+    volumes:
+      - .:/app:z
+      - closest_river_local_osm_data:/data
+    ports: []
+    command: /start-osmworker
+
+  # The self-hosted basemap, from ./basemap (gitignored), with production's
+  # nginx config. The webpack dev server proxies /tiles/ here. Fill it with
+  #   docker compose -f docker-compose.local.yml run --rm osmworker \
+  #     python manage.py fetch_basemap
+  tiles:
+    image: docker.io/nginx:1.29.4-alpine
+    container_name: closest_river_local_tiles
+    volumes:
+      - ./compose/production/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./basemap:/usr/share/nginx/tiles:ro
+
   node:
     build:
       context: .
@@ -87,6 +128,7 @@ services:
     container_name: closest_river_local_node
     depends_on:
       - django
+      - tiles
     volumes:
       - .:/app:z
       # http://jdlm.info/articles/2016/03/06/lessons-building-node-app-docker.html

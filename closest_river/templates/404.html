@@ -1,15 +1,15 @@
-{% extends "base.html" %}
+{% extends "error_page.html" %}
 
 {% block title %}
-  Page not found
+  Page not found · My closest river
 {% endblock title %}
-{% block content %}
-  <h1>Page not found</h1>
-  <p>
-    {% if exception %}
-      {{ exception }}
-    {% else %}
-      This is not the page you were looking for.
-    {% endif %}
-  </p>
-{% endblock content %}
+{% block code %}
+  Error 404
+{% endblock code %}
+{% block heading %}
+  This stretch has run dry
+{% endblock heading %}
+{% block message %}
+  {# Not {{ exception }}: in production that is often just a class name. #}
+  We couldn’t find the page you were looking for. It may have moved, or the link may be wrong.
+{% endblock message %}

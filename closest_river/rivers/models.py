@@ -1,140 +1,238 @@
-import logging
-import subprocess
-import tempfile
-import time
-from pathlib import Path
+"""Models over the osm2pgsql-managed `osm` schema.
 
-import requests
+These tables are created and maintained by osm2pgsql using the flex style at
+compose/production/osm2pgsql/waterways.lua, so every model here is
+``managed = False``. Django owns the *shape of the queries*, not the shape of
+the schema: to change a column, change the Lua style and re-import.
+
+The `osm` schema is on the connection's search_path (see
+config/settings/base.py), so bare table names resolve without qualification.
+"""
+
 from django.contrib.gis.db.models import LineStringField
 from django.contrib.postgres.fields import ArrayField
-from django.contrib.postgres.indexes import GinIndex
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.db import models
+from django.db.models import Q
 
-logger = logging.getLogger(__name__)
+# Watercourses that are dry for part of the year: intermittent=yes, or a
+# seasonal=* value saying when they flow. Most of inland Australia's network
+# is tagged this way, and drawing it like permanent water is misleading.
+# Mirrors is_intermittent() in waterways.lua and the backfill in migration
+# 0005; keep the three in step.
+SEASONAL_VALUES = ("yes", "wet_season", "wet")
+
+
+def is_intermittent(tags: dict | None) -> bool:
+    tags = tags or {}
+    return tags.get("intermittent") == "yes" or tags.get("seasonal") in SEASONAL_VALUES
+
+
+INTERMITTENT_SECTIONS = Q(tags__intermittent="yes") | Q(
+    tags__seasonal__in=SEASONAL_VALUES,
+)
+
+
+def intermittent_tags_sql(tags: str = "tags") -> str:
+    """is_intermittent() as SQL, over the jsonb column `tags`."""
+    seasonal = ", ".join(f"'{value}'" for value in SEASONAL_VALUES)
+    return (
+        f"COALESCE({tags}->>'intermittent' = 'yes' "
+        f"OR {tags}->>'seasonal' IN ({seasonal}), false)"
+    )
+
+
+def unnamed_waterway(waterway: str | None) -> str:
+    """What to call a waterway with no name: its OSM waterway type if it has
+    one ("Unnamed drain"), otherwise just "Unnamed waterway"."""
+    noun = waterway.replace("_", " ") if waterway else "waterway"
+    return f"Unnamed {noun}"
+
+
+class SyncState(models.Model):
+    """Singleton row tracking the state of the OSM pipeline.
+
+    Unlike everything else in this module this table is Django-managed and
+    lives in `public`. ``data_version`` is mixed into every tile cache key: a
+    full rebuild bumps it, which strands every previously cached tile at once.
+    Incremental syncs do *not* bump it — they evict individual tiles instead
+    (see tile_cache.invalidate_expired_tiles).
+    """
+
+    SINGLETON_PK = 1
+
+    data_version = models.PositiveIntegerField(default=1)
+    last_full_import_at = models.DateTimeField(blank=True, null=True)
+    last_sync_at = models.DateTimeField(blank=True, null=True)
+    last_sync_tiles_expired = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "OSM sync state"
+
+    def __str__(self):
+        return f"data version {self.data_version}, last synced {self.last_sync_at}"
+
+    @classmethod
+    def load(cls) -> "SyncState":
+        state, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
+        return state
 
 
 class RiverSection(models.Model):
-    name = models.CharField(max_length=255)
-    osm_way_id = models.CharField(max_length=1024, blank=True, default="")
-    osm_node_ids = ArrayField(
-        models.CharField(max_length=1024),
-        default=list,
-        blank=True,
-    )
+    """A single OSM way forming part of a river or stream.
+
+    Usually a way tagged waterway=river or waterway=stream, but also one that is
+    only kept because it is a member of a river or stream *relation* — a traced
+    watercourse routinely switches to canal or drain partway through, and
+    dropping those segments puts a gap in the middle of a named river.
+    """
+
+    osm_way_id = models.BigIntegerField(primary_key=True)
+    name = models.TextField(blank=True, null=True)  # noqa: DJ001
+    # Always "river" or "stream": the class this way is drawn and queried as,
+    # which for a promoted member is its relation's rather than its own. The
+    # literal OSM tag is always in ``tags`` — see waterways.lua.
+    waterway = models.TextField()
+    # Denormalised most-significant role from the parent relation
+    # (main_stream, side_stream, ...). RiverMembership holds every membership.
+    role = models.TextField(blank=True, null=True)  # noqa: DJ001
+    node_ids = ArrayField(models.BigIntegerField(), blank=True, null=True)
     tags = models.JSONField(default=dict, blank=True)
-    geometry = LineStringField(blank=True, null=True)
+    geometry = LineStringField(srid=4326)
     river = models.ForeignKey(
         "River",
-        on_delete=models.CASCADE,
+        to_field="osm_id",
+        db_column="river_osm_id",
+        # osm2pgsql writes way rows before relation rows, and legitimately
+        # writes sections whose parent relation is outside the extract, so a
+        # real foreign key constraint would abort the import.
+        db_constraint=False,
+        on_delete=models.DO_NOTHING,
         blank=True,
         null=True,
         related_name="sections",
     )
 
     class Meta:
-        indexes = [GinIndex("tags", name="river_section_tag_index")]
+        managed = False
+        db_table = "waterway_section"
 
     def __str__(self):
         return f"{self.name} ({self.osm_way_id})" if self.name else str(self.osm_way_id)
 
+    @property
+    def intermittent(self) -> bool:
+        return is_intermittent(self.tags)
+
+    @property
+    def display_name(self) -> str:
+        # The literal tag, not the waterway column: a promoted drain is stored
+        # as its relation's class, but is still a drain.
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
+
 
 class River(models.Model):
-    osm_id = models.CharField(max_length=1024, blank=True, default="")
-    name = models.CharField(max_length=1024)
-    destination = models.CharField(max_length=1024, default="", blank=True)
-    wikipedia = models.CharField(max_length=1024, default="", blank=True)
+    """An OSM type=waterway relation grouping many sections."""
+
+    osm_id = models.BigIntegerField(primary_key=True)
+    name = models.TextField(blank=True, null=True)  # noqa: DJ001
+    destination = models.TextField(blank=True, null=True)  # noqa: DJ001
+    wikipedia = models.TextField(blank=True, null=True)  # noqa: DJ001
     tags = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        managed = False
+        db_table = "waterway_relation"
 
     def __str__(self):
         return f"{self.name} ({self.osm_id})" if self.name else str(self.osm_id)
 
+    @property
+    def display_name(self) -> str:
+        return self.name or unnamed_waterway((self.tags or {}).get("waterway"))
 
-class FetchingOSMDataError(Exception):
-    pass
+    def is_mostly_intermittent(self) -> bool:
+        """Whether to describe and draw the river as a whole as intermittent.
+
+        The relation is often untagged even when nearly every member way is
+        (Cooper Creek: 299 of 308 sections), so fall back to the majority.
+
+        Every section takes this verdict on the map, whatever its own tags say:
+        drawn way by way, a mostly permanent river breaks up into dashes
+        wherever a stretch happens to be tagged. Mirrored in SQL by
+        osm_pipeline.apply_river_intermittency(); keep the two in step.
+        """
+        if is_intermittent(self.tags):
+            return True
+        total = self.sections.count()
+        return total > 0 and (
+            self.sections.filter(INTERMITTENT_SECTIONS).count() * 2 > total
+        )
 
 
-# ruff: noqa: S603, S607
-class OsmData(models.Model):
-    file = models.FileField(upload_to="osm_data/")
-    date_uploaded = models.DateTimeField(auto_now_add=True)
+class RiverMembership(models.Model):
+    """Source of truth for relation membership.
+
+    One row per way member per relation, so a way belonging to several
+    relations is represented faithfully. ``sequence`` preserves member order,
+    which is what any along-the-river distance calculation needs.
+    """
+
+    # osm2pgsql cannot generate a surrogate key, so the model is keyed on the
+    # pair the importer already guarantees to be unique: sequence is assigned
+    # per relation in waterways.lua, and relation ids are unique. waterways.lua
+    # backs this with a unique index on the same two columns.
+    pk = models.CompositePrimaryKey("river", "sequence")
+    river = models.ForeignKey(
+        River,
+        to_field="osm_id",
+        db_column="river_osm_id",
+        db_constraint=False,
+        on_delete=models.DO_NOTHING,
+        related_name="memberships",
+    )
+    way_osm_id = models.BigIntegerField()
+    role = models.TextField(blank=True, null=True)  # noqa: DJ001
+    sequence = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = "waterway_membership"
+        # Deliberately no default ordering: Meta.ordering leaks into GROUP BY
+        # and silently breaks .distinct() and aggregates, and would add a sort
+        # to every incidental query over a large table. Order explicitly by
+        # ("river_id", "sequence") where member order actually matters.
 
     def __str__(self):
-        return self.file.name if self.file else "Empty data"
+        return f"{self.river_id}/{self.way_osm_id} ({self.role or 'no role'})"
 
-    def download_osm_data(
-        self,
-        url: str = "https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf",
-        filename: str = "planet-latest.osm.pbf",
-    ):
-        try:
-            download_start = time.perf_counter()
-            response = requests.get(url, timeout=1000)
-            download_end = time.perf_counter()
 
-            logger.info("Download time: %s", download_end - download_start)
-            response.raise_for_status()
-        except (requests.HTTPError, ValueError) as e:
-            raise FetchingOSMDataError from e
+class WaterwayTile(models.Model):
+    """Web Mercator copy of every waterway, used for the cached zoom levels.
 
-        self.file.save(
-            filename,
-            ContentFile(response.content),
-            save=True,
-        )
-        return self
+    Web Mercator because osm2pgsql only permits tile expiry on 3857 geometry
+    columns — see waterways.lua. Maintained by the same append that updates
+    RiverSection, so it cannot drift out of step with it.
 
-    def convert_to_o5m_and_filter(self):
-        with (
-            default_storage.open(self.file.name, "rb") as file,
-            tempfile.NamedTemporaryFile(delete=False) as temp_input_file,
-        ):
-            temp_input_file.write(file.read())
-            temp_input_file_path = temp_input_file.name
+    Includes streams, not just rivers: the dense dendritic network is the
+    point of the map and has to survive zooming out. Keeping it affordable is
+    a tile-time concern (snap to a pixel grid, merge, small extent) rather than
+    something solved by throwing features away — see vector_layers.py.
+    """
 
-        converted_filename = "planet-latest.osm.o5m"
-        filtered_filename = "planet-latest-rivers.osm.o5m"
+    osm_way_id = models.BigIntegerField(primary_key=True)
+    waterway = models.TextField()
+    # Whether the map draws this way as intermittent: its river's verdict
+    # (River.is_mostly_intermittent) for a relation member, otherwise
+    # is_intermittent() of its own tags. Stored here because the cached zooms
+    # must never read waterway_section, where the tags live. waterways.lua
+    # writes the way's own value; osm_pipeline.apply_river_intermittency()
+    # then overwrites it for relation members.
+    intermittent = models.BooleanField(default=False)
+    geometry = LineStringField(srid=3857)
 
-        logger.info("Converting file to o5m format.")
-        convert_start = time.perf_counter()
-        subprocess.run(
-            [
-                "osmconvert",
-                temp_input_file_path,
-                f"-o={converted_filename}",
-            ],
-            check=True,
-        )
-        convert_end = time.perf_counter()
-        logger.info(
-            "Finished converting file to o5m format. Runtime: %s",
-            convert_end - convert_start,
-        )
+    class Meta:
+        managed = False
+        db_table = "waterway_tile"
 
-        logger.info("Filtering file to rivers only.")
-        filter_start = time.perf_counter()
-        subprocess.run(
-            [
-                "osmfilter",
-                "australia-latest.o5m",
-                '--keep="waterway=river"',
-                f"-o={filtered_filename}",
-            ],
-            check=False,
-        )
-        filter_end = time.perf_counter()
-        logger.info(
-            "Finished filtering file to rivers only. Runtime: %s",
-            filter_end - filter_start,
-        )
-
-        with Path(filtered_filename).open("rb") as result_file:
-            self.file.save(
-                filtered_filename,
-                content=ContentFile(result_file.read()),
-            )
-
-        Path.unlink(Path(temp_input_file_path))
-        Path.unlink(Path(converted_filename))
-        Path.unlink(Path(filtered_filename))
+    def __str__(self):
+        return f"{self.waterway} {self.osm_way_id}"

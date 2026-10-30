@@ -14,6 +14,12 @@ module.exports = merge(commonConfig, {
     publicPath: `${staticUrl}webpack_bundles/`,
   },
   plugins: [
-    new Dotenv({ path: path.resolve(__dirname, '../.envs/.production/.node') }),
+    // .envs/ is in .dockerignore, so inside the image build the file is
+    // absent and MAPTILER_API_KEY comes from the build arg instead (see the
+    // client-builder stage of compose/production/django/Dockerfile).
+    new Dotenv({
+      path: path.resolve(__dirname, '../.envs/.production/.node'),
+      systemvars: true,
+    }),
   ],
 });

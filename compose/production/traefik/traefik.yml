@@ -60,6 +60,14 @@ http:
       tls:
         certResolver: letsencrypt
 
+    web-tiles-router:
+      rule: 'Host(`closest-river.jonojr.tech`) && PathPrefix(`/tiles/`)'
+      entryPoints:
+        - web-secure
+      service: django-media
+      tls:
+        certResolver: letsencrypt
+
   middlewares:
     csrf:
       # https://doc.traefik.io/traefik/master/middlewares/http/headers/#hostsproxyheaders
@@ -78,6 +86,7 @@ http:
         servers:
           - url: http://flower:5555
 
+    # nginx: user media, and the self-hosted basemap under /tiles/.
     django-media:
       loadBalancer:
         servers:

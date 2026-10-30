@@ -41,7 +41,10 @@
   "dependencies": {
     "@mapbox-controls/ruler": "^3.0.0",
     "@maplibre/maplibre-gl-geocoder": "^1.7.0",
+    "@protomaps/basemaps": "^5.7.2",
     "dotenv-webpack": "^8.1.0",
-    "maplibre-gl": "^4.7.1"
+    "maplibre-contour": "^0.1.1",
+    "maplibre-gl": "^6.16.0",
+    "pmtiles": "^4.5.0"
   }
 }

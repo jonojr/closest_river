@@ -1,5 +1,5 @@
 # define an alias for the specific python version used in this file.
-FROM docker.io/python:3.12.13-slim-bookworm AS python
+FROM docker.io/python:3.12.13-slim-trixie AS python
 
 # Python build stage
 FROM python AS python-build-stage
@@ -10,12 +10,7 @@ ARG BUILD_ENVIRONMENT=local
 RUN apt-get update && apt-get install --no-install-recommends -y \
   # dependencies for building Python packages
   build-essential \
-  cmake \
   python3-dev \
-  libboost-dev \
-  libexpat1-dev \
-  zlib1g-dev \
-  libbz2-dev \
   # psycopg dependencies
   libpq-dev
 
@@ -96,5 +91,58 @@ RUN chmod +x /start-flower
 
 # copy application code to WORKDIR
 COPY . ${APP_HOME}
+
+ENTRYPOINT ["/entrypoint"]
+
+
+# OSM tooling stage
+# -----------------------------------------------------------------------------
+# Used only by the osmworker service. See the production Dockerfile for why this
+# is a stage on top of the app image rather than a separate one.
+#
+# Debian trixie ships osm2pgsql 2.1.1: has define_expire_output and the
+# properties table, but predates 2.3 — so no max_tiles_geometry /
+# max_tiles_overall / diff_expire in waterways.lua.
+FROM python-run-stage AS osm-tools
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  osm2pgsql \
+  osmium-tool \
+  # Fetching extracts and replication diffs, and psql for maintenance SQL.
+  ca-certificates \
+  curl \
+  postgresql-client \
+  # osm2pgsql-replication imports osmium.WriteHandler, removed in pyosmium 4.x,
+  # so it runs on Debian's python3 with Debian's modules rather than the
+  # application interpreter. See the production Dockerfile for detail.
+  python3-pyosmium \
+  python3-psycopg2 \
+  && rm -rf /var/lib/apt/lists/*
+
+# pmtiles, for cutting the self-hosted basemap out of the published planet
+# archives (rivers/basemap.py). A single static binary; not packaged by Debian.
+ARG PMTILES_VERSION=1.31.2
+ARG TARGETARCH
+RUN case "${TARGETARCH:-amd64}" in \
+    amd64) arch=x86_64 ;; \
+    arm64) arch=arm64 ;; \
+    *) echo "No pmtiles build for ${TARGETARCH}" >&2; exit 1 ;; \
+  esac \
+  && curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_${arch}.tar.gz" \
+  | tar -xz -C /usr/local/bin pmtiles \
+  && pmtiles version
+
+# Smoke-test the tooling. `osm2pgsql-replication --help` exits 1 by design, so
+# assert on the imports it needs instead.
+RUN osm2pgsql --version \
+  && osmium --version \
+  && /usr/bin/python3 -c "\
+from osmium.replication.server import ReplicationServer; \
+from osmium import WriteHandler; \
+import psycopg2"
+
+COPY ./compose/local/django/celery/osmworker/start /start-osmworker
+RUN sed -i 's/\r$//g' /start-osmworker
+RUN chmod +x /start-osmworker
 
 ENTRYPOINT ["/entrypoint"]
