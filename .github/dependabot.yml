@@ -6,93 +6,77 @@ updates:
   # Update GitHub actions in workflows
   - package-ecosystem: 'github-actions'
     directory: '/'
-    # Every weekday
     schedule:
-      interval: 'daily'
+      interval: 'weekly'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
 
-  # Enable version updates for Docker
-  # We need to specify each Dockerfile in a separate entry because Dependabot doesn't
-  # support wildcards or recursively checking subdirectories. Check this issue for updates:
-  # https://github.com/dependabot/dependabot-core/issues/2178
+  # Docker: dependencies where only patch updates are wanted
+  # (Python base images etc. - ignore major/minor, e.g. 3.10 -> 3.11)
   - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/local/django` directory
-    directory: 'compose/local/django/'
-    # Every weekday
+    directories:
+      - 'compose/local/django/'
+      - 'compose/local/docs/'
+      - 'compose/production/django/'
     schedule:
-      interval: 'daily'
-    # Ignore minor version updates (3.10 -> 3.11) but update patch versions
+      interval: 'weekly'
     ignore:
       - dependency-name: '*'
         update-types:
           - 'version-update:semver-major'
           - 'version-update:semver-minor'
+    groups:
+      docker-patch-updates:
+        patterns:
+          - '*'
 
+  # Docker: everything else, all update types allowed
   - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/local/docs` directory
-    directory: 'compose/local/docs/'
-    # Every weekday
+    directories:
+      - 'compose/local/node/'
+      - 'compose/production/aws/'
+      - 'compose/production/postgres/'
+      - 'compose/production/traefik/'
+      - 'compose/production/nginx/'
     schedule:
-      interval: 'daily'
-    # Ignore minor version updates (3.10 -> 3.11) but update patch versions
-    ignore:
-      - dependency-name: '*'
+      interval: 'weekly'
+    groups:
+      docker-minor-and-patch:
         update-types:
-          - 'version-update:semver-major'
-          - 'version-update:semver-minor'
-
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/local/node` directory
-    directory: 'compose/local/node/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/production/aws` directory
-    directory: 'compose/production/aws/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/production/django` directory
-    directory: 'compose/production/django/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-    # Ignore minor version updates (3.10 -> 3.11) but update patch versions
-    ignore:
-      - dependency-name: '*'
+          - 'minor'
+          - 'patch'
+      # Majors get one grouped PR too; remove this block if you'd rather
+      # have them arrive individually
+      docker-major:
         update-types:
-          - 'version-update:semver-major'
-          - 'version-update:semver-minor'
+          - 'major'
 
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/production/postgres` directory
-    directory: 'compose/production/postgres/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/production/traefik` directory
-    directory: 'compose/production/traefik/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-
-  - package-ecosystem: 'docker'
-    # Look for a `Dockerfile` in the `compose/production/nginx` directory
-    directory: 'compose/production/nginx/'
-    # Every weekday
-    schedule:
-      interval: 'daily'
-
-  # Enable version updates for Python/Pip - Production
+  # Python/pip - production
   - package-ecosystem: 'pip'
-    # Look for a `requirements.txt` in the `root` directory
-    # also 'setup.cfg', 'runtime.txt' and 'requirements/*.txt'
     directory: '/'
-    # Every weekday
     schedule:
-      interval: 'daily'
+      interval: 'weekly'
+    groups:
+      python-minor-and-patch:
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # JavaScript/npm
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      npm-dev:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+      npm-prod:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
