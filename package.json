@@ -40,7 +40,7 @@
   },
   "dependencies": {
     "@mapbox-controls/ruler": "^3.0.0",
-    "@maplibre/maplibre-gl-geocoder": "^1.7.0",
+    "@maplibre/maplibre-gl-geocoder": "^1.9.4",
     "@protomaps/basemaps": "^5.7.2",
     "dotenv-webpack": "^8.1.0",
     "maplibre-contour": "^0.1.1",
