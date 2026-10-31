@@ -60,6 +60,10 @@ services:
     env_file:
       - path: ${ENVS_DIR:-./.envs/.production}/.postgres
         required: false
+    # /dev/shm, where parallel queries share their hash tables and sorts.
+    # Docker's 64MB default runs out under parallel workers with this work_mem
+    # ("could not resize shared memory segment").
+    shm_size: ${POSTGRES_SHM_SIZE:-1gb}
     # The stock image defaults (128MB shared_buffers, 4MB work_mem, 64MB
     # maintenance_work_mem) are far too small for a planet-scale bulk load and
     # for ST_AsMVT at low zoom. Override per-box via the shell or a root .env;
