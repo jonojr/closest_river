@@ -7,6 +7,9 @@ def umami(request):
         "UMAMI_WEBSITE_ID": settings.UMAMI_WEBSITE_ID,
         "UMAMI_SCRIPT_URL": settings.UMAMI_SCRIPT_URL,
         "UMAMI_RECORDER_URL": settings.UMAMI_RECORDER_URL,
+        "UMAMI_HOST_URL": (
+            settings.UMAMI_HOST_URL or request.build_absolute_uri("/").rstrip("/")
+        ),
         "UMAMI_SESSION_REPLAY": settings.UMAMI_SESSION_REPLAY,
         "UMAMI_PERFORMANCE": settings.UMAMI_PERFORMANCE,
     }

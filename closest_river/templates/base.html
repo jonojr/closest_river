@@ -55,11 +55,13 @@
       <script defer
               src="{{ UMAMI_SCRIPT_URL }}"
               data-website-id="{{ UMAMI_WEBSITE_ID }}"
+              data-host-url="{{ UMAMI_HOST_URL }}"
               {% if UMAMI_PERFORMANCE %}data-performance="true"{% endif %}></script>
       {% if UMAMI_SESSION_REPLAY %}
         <script defer
                 src="{{ UMAMI_RECORDER_URL }}"
-                data-website-id="{{ UMAMI_WEBSITE_ID }}"></script>
+                data-website-id="{{ UMAMI_WEBSITE_ID }}"
+                data-host-url="{{ UMAMI_HOST_URL }}"></script>
       {% endif %}
     {% endif %}
   </head>
