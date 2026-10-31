@@ -1,8 +1,9 @@
 """The optional Umami tracking tags in base.html.
 
 What matters: nothing is loaded unless a website ID is configured, the scripts
-come from wherever the settings say, the session replay recorder only loads
-when separately switched on, and performance reporting can be switched off.
+come from wherever the settings say, they report to the configured host or
+else the site itself, the session replay recorder only loads when separately
+switched on, and performance reporting can be switched off.
 """
 
 from html.parser import HTMLParser
@@ -36,6 +37,15 @@ def _tracked_scripts(client):
     """Each Umami script on the home page by src, mapped to its website ID."""
     return {
         src: attrs["data-website-id"]
+        for src, attrs in _script_tags(client).items()
+        if "data-website-id" in attrs
+    }
+
+
+def _reported_hosts(client):
+    """Each Umami script on the home page by src, mapped to its data host."""
+    return {
+        src: attrs["data-host-url"]
         for src, attrs in _script_tags(client).items()
         if "data-website-id" in attrs
     }
@@ -85,3 +95,25 @@ def test_performance_reporting_can_be_switched_off(client, settings, enabled, ex
     tracker = _script_tags(client)["/script.js"]
 
     assert tracker.get("data-performance") == expected
+
+
+def test_data_goes_to_the_site_itself_by_default(client, settings):
+    settings.UMAMI_WEBSITE_ID = WEBSITE_ID
+    settings.UMAMI_HOST_URL = ""
+    settings.UMAMI_SESSION_REPLAY = True
+
+    assert _reported_hosts(client) == {
+        "/script.js": "http://testserver",
+        "/recorder.js": "http://testserver",
+    }
+
+
+def test_data_can_go_to_another_host(client, settings):
+    settings.UMAMI_WEBSITE_ID = WEBSITE_ID
+    settings.UMAMI_HOST_URL = "https://umami.example.com"
+    settings.UMAMI_SESSION_REPLAY = True
+
+    assert _reported_hosts(client) == {
+        "/script.js": "https://umami.example.com",
+        "/recorder.js": "https://umami.example.com",
+    }
