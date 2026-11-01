@@ -17,7 +17,9 @@ from closest_river.rivers import basemap
 from closest_river.rivers import osm_pipeline
 from closest_river.rivers.models import SyncState
 from closest_river.rivers.tile_cache import bump_data_version
+from closest_river.rivers.tile_cache import high_effort_tiles
 from closest_river.rivers.tile_cache import invalidate_expired_tiles
+from closest_river.rivers.tile_cache import precache_tiles
 from config.celery_app import app
 
 logger = logging.getLogger(__name__)
@@ -93,6 +95,9 @@ def sync_osm_waterways() -> dict:
     Runs daily. osm2pgsql keeps the replication cursor in its properties table
     and writes it in the same transaction as the data, so a failed run simply
     reapplies the same diffs next time rather than skipping them.
+
+    Afterwards it queues the costliest of the evicted tiles to be rendered
+    again before anyone asks for them (see precache_high_effort_tiles).
     """
     # Imported here to avoid pulling the tile layers (and their model imports)
     # into every worker at module load.
@@ -110,7 +115,8 @@ def sync_osm_waterways() -> dict:
         with steps.step("Analyzing tables"):
             osm_pipeline.analyze_schema(settings.OSM_SCHEMA)
         with steps.step("Invalidating changed tiles"):
-            tiles_expired = invalidate_expired_tiles(layer_ids)
+            expired = invalidate_expired_tiles(layer_ids)
+        tiles_expired = len(expired) * len(layer_ids)
 
         state = SyncState.load()
         state.last_sync_at = timezone.now()
@@ -122,7 +128,44 @@ def sync_osm_waterways() -> dict:
         steps.elapsed,
         tiles_expired,
     )
-    return {"tiles_expired": tiles_expired}
+
+    # A task of its own, after the lock is released: it only reads, and a
+    # failure here should not mark the sync itself as failed.
+    to_precache = high_effort_tiles(expired, settings.TILE_PRECACHE_MAX_ZOOM)
+    if to_precache:
+        precache_high_effort_tiles.delay(to_precache)
+
+    return {"tiles_expired": tiles_expired, "tiles_to_precache": len(to_precache)}
+
+
+@app.task(
+    name="closest_river.rivers.tasks.precache_high_effort_tiles",
+    # Shares the osm queue's single slot, so bounded well short of the next
+    # day's sync. The tiles arrive lowest zoom first, so a run cut short loses
+    # only the cheapest of them.
+    time_limit=3 * 60 * 60,
+    soft_time_limit=2 * 60 * 60 + 45 * 60,
+)
+def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
+    """Render the low-zoom tiles a sync evicted back into the cache.
+
+    These merge the most of the network and can take a second each, so
+    otherwise the first visitor after every sync pays for each one.
+    """
+    from closest_river.rivers.views import RiverSectionBaseLayer
+
+    layers = [layer_class() for layer_class in RiverSectionBaseLayer.layer_classes]
+    started = time.monotonic()
+    logger.info("Precaching %s tiles across %s layer(s)", len(tiles), len(layers))
+
+    rendered = precache_tiles(layers, [tuple(tile) for tile in tiles])
+
+    logger.info(
+        "Precached %s tiles in %s",
+        rendered,
+        osm_pipeline.format_duration(time.monotonic() - started),
+    )
+    return {"tiles_precached": rendered}
 
 
 @app.task(

@@ -70,7 +70,7 @@ def test_drains_the_expire_table():
 def test_no_expired_tiles_is_a_no_op():
     cached = _cache_tile(6, 1, 1)
 
-    assert tile_cache.invalidate_expired_tiles([LAYER]) == 0
+    assert tile_cache.invalidate_expired_tiles([LAYER]) == set()
     assert cache.get(cached) == b"tile"
 
 
@@ -90,4 +90,42 @@ def test_missing_expire_table_is_survivable():
     with connection.cursor() as cursor:
         cursor.execute("DROP TABLE osm.tile_expire")
 
-    assert tile_cache.invalidate_expired_tiles([LAYER]) == 0
+    assert tile_cache.invalidate_expired_tiles([LAYER]) == set()
+
+
+def test_returns_the_tiles_it_evicted_including_zoom_zero():
+    _expire((4, 8, 5), (6, 33, 22))
+
+    evicted = tile_cache.invalidate_expired_tiles([LAYER])
+
+    assert evicted == {(0, 0, 0), (4, 8, 5), (6, 33, 22)}
+
+
+def test_high_effort_tiles_are_the_low_zooms_lowest_first():
+    """A precache cut short should lose only the cheapest tiles."""
+    tiles = {(10, 900, 600), (0, 0, 0), (6, 33, 22), (3, 4, 2), (8, 230, 155)}
+
+    assert tile_cache.high_effort_tiles(tiles, max_zoom=8) == [
+        (0, 0, 0),
+        (3, 4, 2),
+        (6, 33, 22),
+        (8, 230, 155),
+    ]
+
+
+def test_a_negative_max_zoom_precaches_nothing():
+    assert tile_cache.high_effort_tiles({(0, 0, 0), (4, 8, 5)}, max_zoom=-1) == []
+
+
+def test_precaching_renders_each_tile_in_every_layer():
+    class FakeLayer:
+        def __init__(self):
+            self.rendered = []
+
+        def get_tile(self, x, y, z):
+            self.rendered.append((z, x, y))
+
+    layers = [FakeLayer(), FakeLayer()]
+
+    assert tile_cache.precache_tiles(layers, [(0, 0, 0), (4, 8, 5)]) == 4
+    assert all(layer.rendered == [(0, 0, 0), (4, 8, 5)] for layer in layers)

@@ -89,6 +89,13 @@ Celery Beat runs `sync_osm_waterways` at 03:30 (`CELERY_BEAT_SCHEDULE`). It
 applies every replication diff published since the last run, re-analyzes, and
 evicts the affected tiles.
 
+It then queues `precache_high_effort_tiles`, which renders the evicted tiles up to
+`TILE_PRECACHE_MAX_ZOOM` (default 8) back into the cache, lowest zoom first. Those
+merge the most of the network and take up to a second each, so otherwise the
+first visitor after every sync waits on each one. It runs on the `osm` queue
+after the sync releases its lock, and a failure there leaves the sync's own
+result alone. Set `TILE_PRECACHE_MAX_ZOOM=-1` to turn it off.
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.
