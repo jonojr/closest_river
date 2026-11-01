@@ -6,6 +6,7 @@ import pytest
 from django.contrib.gis.geos import LineString
 from django.urls import reverse
 
+from closest_river.rivers.admin import _tiles_crossed
 from closest_river.rivers.models import SyncState
 from closest_river.rivers.models import WaterwayTile
 
@@ -70,3 +71,50 @@ def test_waterway_tile_detail_page_loads(admin_client, waterway_tile):
     url = reverse("admin:rivers_waterwaytile_change", args=[waterway_tile.pk])
 
     assert admin_client.get(url).status_code == HTTPStatus.OK
+
+
+def _waterway_tile(osm_way_id, *coords):
+    return WaterwayTile.objects.create(
+        osm_way_id=osm_way_id,
+        waterway="river",
+        geometry=LineString(*coords, srid=3857),
+    )
+
+
+def test_tiles_are_the_ones_the_line_crosses_not_its_bounding_box():
+    """x + y = 4000 m: through the NW, NE and SE quarters around the origin.
+
+    Its bounding box covers the SW quarter too, which the line never enters,
+    so an edit to it cannot have changed that tile.
+    """
+    _waterway_tile(1, (-1000, 5000), (5000, -1000))
+
+    at_z1 = [(x, y) for z, x, y in _tiles_crossed(1) if z == 1]
+
+    assert at_z1 == [(0, 0), (1, 0), (1, 1)]
+
+
+def test_every_cached_zoom_is_listed():
+    _waterway_tile(1, (16132000, -4554000), (16132100, -4554100))
+
+    assert {z for z, _, _ in _tiles_crossed(1)} == set(range(11))
+
+
+def test_the_detail_page_lists_the_tiles(admin_client):
+    _waterway_tile(1, (-1000, 5000), (5000, -1000))
+    url = reverse("admin:rivers_waterwaytile_change", args=[1])
+
+    response = admin_client.get(url)
+
+    assert "Cached tiles it is drawn in" in response.text
+    assert "z1: (0, 0), (1, 0), (1, 1)" in response.text
+
+
+def test_a_long_way_summarises_its_tiles(admin_client):
+    # 1,200 km east-west, and a z10 tile is 39 km across: about 31 tiles.
+    _waterway_tile(1, (15132000, -4554000), (16332000, -4554000))
+    url = reverse("admin:rivers_waterwaytile_change", args=[1])
+
+    response = admin_client.get(url)
+
+    assert "and 11 more" in response.text or "and 12 more" in response.text
