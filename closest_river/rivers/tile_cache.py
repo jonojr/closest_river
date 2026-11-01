@@ -103,14 +103,14 @@ def _drain_expired_tiles() -> list[tuple[int, int, int]]:
         return []
 
 
-def invalidate_expired_tiles(layer_ids: list[str]) -> int:
+def invalidate_expired_tiles(layer_ids: list[str]) -> set[tuple[int, int, int]]:
     """Evict the cached tiles affected by the last replication update.
 
-    Returns the number of cache keys deleted.
+    Returns the (z, x, y) tiles evicted; each was evicted from every layer.
     """
     expired = _drain_expired_tiles()
     if not expired:
-        return 0
+        return set()
 
     # osm2pgsql refuses minzoom=0, so zoom 0 never appears in the expire table.
     # It is a single tile that any change at all invalidates, so drop it
@@ -131,4 +131,31 @@ def invalidate_expired_tiles(layer_ids: list[str]) -> int:
         len(layer_ids),
         len(expired),
     )
-    return len(keys)
+    return tiles
+
+
+def high_effort_tiles(
+    tiles: set[tuple[int, int, int]],
+    max_zoom: int,
+) -> list[tuple[int, int, int]]:
+    """The tiles worth rendering ahead of the first request for them.
+
+    The lower the zoom, the more of the network a tile merges and the more
+    visitors share it, so these come first: a precache cut short then loses
+    only the cheapest tiles.
+    """
+    return sorted(tile for tile in tiles if tile[0] <= max_zoom)
+
+
+def precache_tiles(layers, tiles: list[tuple[int, int, int]]) -> int:
+    """Render tiles into the cache so no visitor waits on them.
+
+    Goes through the layer's own get_tile, so a tile someone has requested
+    since it was evicted is a cache hit rather than a second render.
+
+    Returns the number of tiles rendered or found cached, across all layers.
+    """
+    for z, x, y in tiles:
+        for layer in layers:
+            layer.get_tile(x, y, z)
+    return len(tiles) * len(layers)

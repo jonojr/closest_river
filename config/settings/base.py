@@ -359,6 +359,10 @@ OSM2PGSQL_STYLE = env(
 )
 OSM2PGSQL_CACHE_MB = env.int("OSM2PGSQL_CACHE_MB", default=2000)
 OSM_MAX_DIFF_SIZE_MB = env.int("OSM_MAX_DIFF_SIZE_MB", default=500)
+# After the daily sync, the evicted tiles up to this zoom are rendered back into
+# the cache rather than left for the first visitor to wait on. Lower zooms merge
+# more of the network and cost up to a second each; set to -1 to turn it off.
+TILE_PRECACHE_MAX_ZOOM = env.int("TILE_PRECACHE_MAX_ZOOM", default=8)
 
 # Self-hosted basemap
 # ------------------------------------------------------------------------------
