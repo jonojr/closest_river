@@ -1,6 +1,9 @@
 # Config for Dependabot updates. See Documentation here:
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
+# Every entry targets test, the integration branch, like every other PR;
+# main only moves when test is merged into it. Security updates raised from
+# Dependabot alerts ignore target-branch and still go to main.
 version: 2
 updates:
   # Update GitHub actions in workflows
@@ -8,6 +11,7 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    target-branch: 'test'
     groups:
       github-actions:
         patterns:
@@ -22,6 +26,7 @@ updates:
       - 'compose/production/django/'
     schedule:
       interval: 'weekly'
+    target-branch: 'test'
     ignore:
       - dependency-name: '*'
         update-types:
@@ -42,6 +47,7 @@ updates:
       - 'compose/production/nginx/'
     schedule:
       interval: 'weekly'
+    target-branch: 'test'
     groups:
       docker-minor-and-patch:
         update-types:
@@ -58,6 +64,7 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    target-branch: 'test'
     # Dependabot ignores the "# pyup: <" caps in the requirements files, so
     # the ones that matter are repeated here.
     ignore:
@@ -81,6 +88,7 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    target-branch: 'test'
     groups:
       npm-dev:
         dependency-type: 'development'
