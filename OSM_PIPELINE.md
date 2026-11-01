@@ -36,7 +36,7 @@ The one exception is `SyncState`, which is Django-managed and lives in `public`.
 
 `osmium tags-filter` keeps ways tagged `waterway=river,stream` and relations
 tagged `type=waterway`. `-R` is deliberately not passed, so a matched relation
-drags its member ways and their nodes into the filtered PBF whatever *their* tags
+drags its member ways and their nodes into the filtered PBF whatever _their_ tags
 say — which is what makes the next paragraph possible.
 
 A traced watercourse routinely switches tag partway through: Bendigo Creek is a
@@ -73,14 +73,14 @@ site keeps serving the previous data until the new set is complete.
 
 Expect hours, and budget disk accordingly:
 
-| | rough size |
-|---|---|
-| planet PBF | ~90 GB |
-| filtered waterways PBF | a few GB |
+|                          | rough size |
+| ------------------------ | ---------- |
+| planet PBF               | ~90 GB     |
+| filtered waterways PBF   | a few GB   |
 | `osm_middle` slim tables | tens of GB |
-| `osm` output tables | tens of GB |
+| `osm` output tables      | tens of GB |
 
-Filtering *before* importing is what keeps the middle tables to tens of GB
+Filtering _before_ importing is what keeps the middle tables to tens of GB
 rather than the several hundred a full-planet slim import would need.
 
 ## Daily sync
@@ -100,13 +100,13 @@ in progress shows as `STARTED`.
 
 ## Monthly rebuild — do not skip this
 
-Feeding unfiltered planet diffs into a *filtered* import has one known gap: if a
+Feeding unfiltered planet diffs into a _filtered_ import has one known gap: if a
 pre-existing way is retagged into a waterway and its own nodes were not edited in
 the same diff, osm2pgsql has no locations for those nodes and the way is missed.
 Every other case — node moves, way edits, deletes, relation changes — is handled
 correctly.
 
-The same applies to a way that only *becomes* promotable later: a canal that is
+The same applies to a way that only _becomes_ promotable later: a canal that is
 added to a river relation in a diff, and which was not already in the filtered
 extract, has no node locations in the middle either, so it stays missing until the
 next full rebuild.

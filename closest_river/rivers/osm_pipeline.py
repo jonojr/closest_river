@@ -337,7 +337,7 @@ def _section_count(cursor, schema: str) -> int | None:
     cursor.execute("SELECT to_regclass(%s)", [f"{schema}.{CANONICAL_TABLE}"])
     if cursor.fetchone()[0] is None:
         return None
-    cursor.execute(f'SELECT count(*) FROM "{schema}"."{CANONICAL_TABLE}"')
+    cursor.execute(f'SELECT count(*) FROM "{schema}"."{CANONICAL_TABLE}"')  # noqa: S608
     return cursor.fetchone()[0]
 
 
