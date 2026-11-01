@@ -4,9 +4,14 @@ from http import HTTPStatus
 
 import pytest
 from django.contrib.gis.geos import LineString
+from django.core.cache import cache
 from django.db import connection
 from django.urls import reverse
+from redis.exceptions import ConnectionError as RedisConnectionError
 
+from closest_river.rivers import admin as admin_module
+from closest_river.rivers import tile_cache
+from closest_river.rivers.admin import _percent
 from closest_river.rivers.admin import _tiles_crossed
 from closest_river.rivers.models import SyncState
 from closest_river.rivers.models import WaterwayTile
@@ -173,3 +178,49 @@ def test_sync_state_lists_the_osm_schemas_and_what_they_are(admin_client, sync_s
     assert "osm_retired: 0\xa0bytes (the previous rebuild" in html
     assert "osm_backup_20260813: " in html
     assert "not created by the pipeline" in html
+
+
+def test_sync_state_shows_how_much_of_each_zoom_is_cached(
+    admin_client,
+    sync_state,
+    settings,
+):
+    settings.TILE_PRECACHE_MAX_ZOOM = 2
+    version = tile_cache.get_data_version()
+    cache.set(tile_cache.tile_cache_key(0, 0, 0, version), b"tile")
+    cache.set(tile_cache.tile_cache_key(2, 1, 3, version), b"tile")
+    url = reverse("admin:rivers_syncstate_change", args=[sync_state.pk])
+
+    response = admin_client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert "<td>0</td><td>1 of 1</td><td>100%</td>" in response.text
+    assert "<td>1</td><td>0 of 4</td><td>0%</td>" in response.text
+    assert "<td>2</td><td>1 of 16</td><td>6%</td>" in response.text
+    assert "<td>3</td>" not in response.text, "stops at the precache zoom"
+
+
+def test_sync_state_still_loads_when_the_cache_is_down(
+    admin_client,
+    sync_state,
+    monkeypatch,
+):
+    def unreachable():
+        msg = "Connection refused"
+        raise RedisConnectionError(msg)
+
+    monkeypatch.setattr(admin_module, "cache_memory", unreachable)
+    url = reverse("admin:rivers_syncstate_change", args=[sync_state.pk])
+
+    response = admin_client.get(url)
+
+    assert response.status_code == HTTPStatus.OK
+    assert "Could not read the cache: Connection refused" in response.text
+
+
+@pytest.mark.parametrize(
+    ("value", "shown"),
+    [(0, "0%"), (100 / 65536, "<1%"), (6.25, "6%"), (99.99, ">99%"), (100, "100%")],
+)
+def test_percent_does_not_round_a_sliver_away(value, shown):
+    assert _percent(value) == shown

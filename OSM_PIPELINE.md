@@ -109,6 +109,13 @@ results. They share the `osm` queue's single slot, so a 03:30 sync waits for
 any still queued; run it during the day. A tile that's already cached costs
 only a lookup, so running it again is harmless.
 
+To see how far it has got, open the sync state in the admin (**Rivers → OSM sync
+states**). Its **Tile cache** section shows how many of each zoom's tiles are
+cached, up to `TILE_PRECACHE_MAX_ZOOM`, and how much memory they take, next to
+the cache's total memory use, its limit and its eviction policy. It doesn't go
+past `TILE_PRECACHE_MAX_ZOOM` because it checks every tile's key, and zooms
+9–10 alone are 1.3 million keys.
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.

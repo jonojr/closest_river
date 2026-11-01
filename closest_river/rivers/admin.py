@@ -5,9 +5,11 @@ from django.contrib import admin
 from django.db import connection
 from django.template.defaultfilters import filesizeformat
 from django.utils.formats import date_format
+from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django.utils.timesince import timesince
 from django.utils.timezone import localtime
+from redis.exceptions import RedisError
 
 from closest_river.rivers import osm_pipeline
 from closest_river.rivers.models import River
@@ -15,6 +17,8 @@ from closest_river.rivers.models import RiverSection
 from closest_river.rivers.models import SyncState
 from closest_river.rivers.models import WaterwayTile
 from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
+from closest_river.rivers.tile_cache import cache_coverage
+from closest_river.rivers.tile_cache import cache_memory
 from closest_river.rivers.vector_layers import TILE_BUFFER
 from closest_river.rivers.vector_layers import TILE_EXTENT
 
@@ -95,7 +99,7 @@ class SyncStateAdmin(ReadOnlyOsmAdmin):
         "last_full_import_at",
         "data_version",
     )
-    fields = (*list_display, "replication", "osm_schemas")
+    fields = (*list_display, "replication", "osm_schemas", "tile_cache")
 
     @admin.display(description="OSM data as of")
     def osm_data_as_of(self, obj):
@@ -140,6 +144,58 @@ class SyncStateAdmin(ReadOnlyOsmAdmin):
                 for name, size in osm_pipeline.schema_sizes()
             ),
         )
+
+    @admin.display(description="Tile cache")
+    def tile_cache(self, obj):
+        """How much of each precached zoom is in the cache, and how much memory
+        it takes. Stops at TILE_PRECACHE_MAX_ZOOM: checking means looking up
+        every tile's key, and zoom 9-10 alone is 1.3 million of them.
+        """
+        try:
+            memory = cache_memory()
+            coverage = cache_coverage(settings.TILE_PRECACHE_MAX_ZOOM)
+        except RedisError as error:
+            return f"Could not read the cache: {error}"
+        summary = ""
+        if memory:
+            limit = filesizeformat(memory["max"]) if memory["max"] else "no limit"
+            summary = format_html(
+                "<p>{} used of {}, evicting by {}</p>",
+                filesizeformat(memory["used"]),
+                limit,
+                memory["policy"],
+            )
+        rows = format_html_join(
+            "",
+            "<tr><td>{}</td><td>{} of {}</td><td>{}</td><td>{}</td></tr>",
+            (
+                (
+                    zoom.zoom,
+                    f"{zoom.cached:,}",
+                    f"{zoom.total:,}",
+                    _percent(zoom.percent),
+                    "" if zoom.memory is None else filesizeformat(zoom.memory),
+                )
+                for zoom in coverage
+            ),
+        )
+        return format_html(
+            "{}<table><thead><tr><th>Zoom</th><th>Cached</th><th>%</th>"
+            "<th>Memory</th></tr></thead><tbody>{}</tbody></table>",
+            summary,
+            rows,
+        )
+
+
+def _percent(value: float) -> str:
+    """Whole percent, except that a sliver is not rounded away: 1 tile of
+    65,536 is not 0%, and 65,535 of them is not 100%.
+    """
+    if 0 < value < 1:
+        return "<1%"
+    if 99 < value < 100:  # noqa: PLR2004
+        return ">99%"
+    return f"{value:.0f}%"
 
 
 def _schema_role(name: str) -> str:
