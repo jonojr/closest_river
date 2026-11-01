@@ -99,6 +99,12 @@ See detailed [cookiecutter-django Docker documentation](https://cookiecutter-dja
 The image build needs `MAPTILER_API_KEY` (in the shell or the root `.env`):
 it is baked into the map JavaScript, and the build refuses to run without it.
 
+The django container applies any new migrations each time it starts, and the
+Celery containers wait for it to finish, so a deploy is just `up -d --build`.
+For a deploy that has to apply migrations in stages by hand, set
+`DJANGO_MIGRATE_ON_START=false` in `.envs/.production/.django` first, and
+remove it afterwards.
+
 A second deployment on the same host, such as a test site, must set its own
 project name, image prefix, data directory, env files and host ports, or it
 will overwrite production's containers, images and data. Use a separate clone

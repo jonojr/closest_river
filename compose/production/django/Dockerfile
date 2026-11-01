@@ -87,6 +87,8 @@ RUN sed -i 's/\r$//g' /entrypoint
 RUN chmod +x /entrypoint
 
 
+COPY --chown=django:django ./compose/production/django/wait-for-migrations /wait-for-migrations
+RUN sed -i 's/\r$//g' /wait-for-migrations
 COPY --chown=django:django ./compose/production/django/start /start
 RUN sed -i 's/\r$//g' /start
 RUN chmod +x /start

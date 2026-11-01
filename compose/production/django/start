@@ -5,6 +5,17 @@ set -o pipefail
 set -o nounset
 
 
+# Apply migrations on every start, so a deploy never runs new code against an
+# old schema because nobody remembered to migrate by hand. If one fails, the
+# site does not start rather than serving errors.
+#
+# DJANGO_MIGRATE_ON_START=false turns this off for the rare deploy that has to
+# apply migrations in stages by hand (migrate to one, run an import, migrate
+# the rest). The Celery containers wait for this step to finish.
+if [ "${DJANGO_MIGRATE_ON_START:-true}" != "false" ]; then
+    python /app/manage.py migrate --noinput
+fi
+
 python /app/manage.py collectstatic --noinput
 
 exec /usr/local/bin/gunicorn config.wsgi --bind 0.0.0.0:5000 --chdir=/app
