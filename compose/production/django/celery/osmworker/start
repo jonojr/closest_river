@@ -4,6 +4,9 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# Don't start on a schema the django container hasn't migrated yet.
+source /wait-for-migrations
+
 
 # Dedicated worker for the OSM import/sync queue.
 #
