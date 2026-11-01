@@ -71,9 +71,6 @@ updates:
       # django-celery-beat 2.9.0 requires Django<6.1. Lift on its 2.10.
       - dependency-name: 'django'
         versions: ['>=6.1']
-      # Sphinx 9.2 needs Python 3.13; the images are on 3.12.
-      - dependency-name: 'sphinx'
-        versions: ['>=9.2']
       # kombu (Celery's transport) requires redis<6.5, up to its latest 5.6.2.
       - dependency-name: 'redis'
         versions: ['>=6.5']

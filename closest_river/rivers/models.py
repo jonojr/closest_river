@@ -72,7 +72,7 @@ class SyncState(models.Model):
         return f"data version {self.data_version}, last synced {self.last_sync_at}"
 
     @classmethod
-    def load(cls) -> "SyncState":
+    def load(cls) -> SyncState:
         state, _ = cls.objects.get_or_create(pk=cls.SINGLETON_PK)
         return state
 
