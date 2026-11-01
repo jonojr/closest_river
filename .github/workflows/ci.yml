@@ -6,12 +6,13 @@ env:
   COMPOSE_DOCKER_CLI_BUILD: 1
 
 on:
+  # test is the integration branch every PR targets; main trails it.
   pull_request:
-    branches: ['master', 'main']
+    branches: ['master', 'main', 'test']
     paths-ignore: ['docs/**']
 
   push:
-    branches: ['master', 'main']
+    branches: ['master', 'main', 'test']
     paths-ignore: ['docs/**']
 
 concurrency:
@@ -26,9 +27,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       # Consider using pre-commit.ci for open source project
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1

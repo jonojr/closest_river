@@ -36,7 +36,7 @@ The one exception is `SyncState`, which is Django-managed and lives in `public`.
 
 `osmium tags-filter` keeps ways tagged `waterway=river,stream` and relations
 tagged `type=waterway`. `-R` is deliberately not passed, so a matched relation
-drags its member ways and their nodes into the filtered PBF whatever *their* tags
+drags its member ways and their nodes into the filtered PBF whatever _their_ tags
 say — which is what makes the next paragraph possible.
 
 A traced watercourse routinely switches tag partway through: Bendigo Creek is a
@@ -73,14 +73,14 @@ site keeps serving the previous data until the new set is complete.
 
 Expect hours, and budget disk accordingly:
 
-| | rough size |
-|---|---|
-| planet PBF | ~90 GB |
-| filtered waterways PBF | a few GB |
+|                          | rough size |
+| ------------------------ | ---------- |
+| planet PBF               | ~90 GB     |
+| filtered waterways PBF   | a few GB   |
 | `osm_middle` slim tables | tens of GB |
-| `osm` output tables | tens of GB |
+| `osm` output tables      | tens of GB |
 
-Filtering *before* importing is what keeps the middle tables to tens of GB
+Filtering _before_ importing is what keeps the middle tables to tens of GB
 rather than the several hundred a full-planet slim import would need.
 
 ## Daily sync
@@ -89,19 +89,44 @@ Celery Beat runs `sync_osm_waterways` at 03:30 (`CELERY_BEAT_SCHEDULE`). It
 applies every replication diff published since the last run, re-analyzes, and
 evicts the affected tiles.
 
+It then queues `precache_high_effort_tiles`, which renders the evicted tiles up to
+`TILE_PRECACHE_MAX_ZOOM` (default 8) back into the cache, lowest zoom first. Those
+merge the most of the network and take up to a second each, so otherwise the
+first visitor after every sync waits on each one. It runs on the `osm` queue
+after the sync releases its lock, and a failure there leaves the sync's own
+result alone. Set `TILE_PRECACHE_MAX_ZOOM=-1` to turn it off.
+
+To warm the whole cache rather than just what a sync evicted, such as after a
+deploy that changes the cache keys, queue every tile up to a zoom:
+
+    docker compose -f docker-compose.production.yml run --rm django python manage.py precache_tiles --max-zoom 6
+
+`--max-zoom` defaults to `TILE_PRECACHE_MAX_ZOOM`. Each zoom level has four
+times as many tiles as the one before it: zooms 0–6 are 5,461 tiles, and 0–8
+are 87,381. They are queued lowest zoom first, in batches of 500
+(`--batch-size`), and each batch runs as its own task, so each shows in Task
+results. They share the `osm` queue's single slot, so a 03:30 sync waits for
+any still queued; run it during the day. A tile that's already cached costs
+only a lookup, so running it again is harmless.
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.
 
+Every run of the sync, the rebuild and the basemap fetch is kept for 180 days
+in the admin under **Celery Results → Task results**: what it returned (for the
+sync, how many cache keys it evicted), or the traceback it failed with. A run
+in progress shows as `STARTED`.
+
 ## Monthly rebuild — do not skip this
 
-Feeding unfiltered planet diffs into a *filtered* import has one known gap: if a
+Feeding unfiltered planet diffs into a _filtered_ import has one known gap: if a
 pre-existing way is retagged into a waterway and its own nodes were not edited in
 the same diff, osm2pgsql has no locations for those nodes and the way is missed.
 Every other case — node moves, way edits, deletes, relation changes — is handled
 correctly.
 
-The same applies to a way that only *becomes* promotable later: a canal that is
+The same applies to a way that only _becomes_ promotable later: a canal that is
 added to a river relation in a diff, and which was not already in the filtered
 extract, has no node locations in the middle either, so it stays missing until the
 next full rebuild.
@@ -175,6 +200,13 @@ only those cache keys. Two wrinkles:
 - Expiry only works in append mode. A full rebuild emits nothing, so it bumps
   `SyncState.data_version` instead, which is mixed into every cache key and
   strands the lot at once.
+
+The cache holds one entry per tile with both layers in it, already gzipped,
+and the tile view serves it as-is with `Content-Encoding: gzip`, so
+`GZipMiddleware` does not compress it again on every request. It has to be the
+whole tile rather than one entry per layer: the view joins the layers' bytes,
+which merges encoded MVTs but not gzip streams. Tiles above the cache threshold
+are rendered per request and compressed by the middleware as before.
 
 **Never call `cache.clear()`.** django-redis implements it as `FLUSHDB`.
 

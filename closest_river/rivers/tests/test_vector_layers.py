@@ -1,8 +1,12 @@
 """Tile rendering: zoom tiers, the merged stream wash, and caching."""
 
+import gzip
+from http import HTTPStatus
+
 import mercantile
 import pytest
 from django.contrib.gis.geos import LineString
+from django.urls import reverse
 
 from closest_river.rivers.models import RiverSection
 from closest_river.rivers.models import WaterwayTile
@@ -56,17 +60,18 @@ def test_a_css_pixel_is_measured_against_a_512_unit_tile():
 
 
 def test_the_snap_grid_is_sub_pixel_where_channels_are_separable():
-    """At zoom 5 and up the grid must be finer than a device pixel.
+    """At zoom 4 and up the grid must be finer than a device pixel.
 
     A coarser grid is visible as a lattice, because snapping moves vertices
     onto rectangular grid points rather than just dropping them.
     """
-    for zoom in range(5, 15):
+    for zoom in range(4, 15):
         assert snap_size_metres(zoom) <= css_pixel_size_metres(zoom) / 2
 
     # Wider than that, a tile spans a continent and the fine grid triples its
     # size for a lattice nobody can resolve.
-    assert snap_size_metres(4) == pytest.approx(css_pixel_size_metres(4))
+    for zoom in range(4):
+        assert snap_size_metres(zoom) == pytest.approx(css_pixel_size_metres(zoom))
 
 
 def test_cached_zooms_read_the_generalised_tile_table():
@@ -148,29 +153,76 @@ def test_the_stream_wash_survives_zooming_out(zoom):
     )
 
 
-def test_tiles_below_the_threshold_are_cached():
+def _get_tile(client, tile, **headers):
+    url = reverse(
+        "rivers:river_section_tiles",
+        kwargs={"x": tile.x, "y": tile.y, "z": tile.z},
+    )
+    return client.get(url, headers=headers)
+
+
+def test_tiles_below_the_threshold_are_cached(client):
     _tile_row(1, "river")
-    layer = RiverSectionVectorLayer()
     tile = mercantile.tile(SEED_LON, SEED_LAT, 6)
 
-    first = layer.get_tile(tile.x, tile.y, tile.z)
+    first = _get_tile(client, tile).content
     assert first
 
     # Remove the underlying row: the cached tile must still be served.
     WaterwayTile.objects.all().delete()
-    assert layer.get_tile(tile.x, tile.y, tile.z) == first
+    assert _get_tile(client, tile).content == first
 
 
-def test_tiles_above_the_threshold_are_not_cached():
+def test_cached_tiles_are_served_already_gzipped(client):
+    """Compressed once, when cached, rather than on every request."""
+    _tile_row(1, "river")
+    _tile_row(2, "stream", offset=8000)
+    tile = mercantile.tile(SEED_LON, SEED_LAT, 6)
+
+    response = _get_tile(client, tile, accept_encoding="gzip, deflate, br")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response["Content-Encoding"] == "gzip"
+    assert "Accept-Encoding" in response["Vary"]
+    # Both layers, in one gzip stream.
+    assert gzip.decompress(response.content) == (
+        StreamSectionVectorLayer().get_tile(tile.x, tile.y, tile.z)
+        + RiverSectionVectorLayer().get_tile(tile.x, tile.y, tile.z)
+    )
+
+
+def test_a_client_that_cannot_take_gzip_gets_the_plain_tile(client):
+    _tile_row(1, "river")
+    tile = mercantile.tile(SEED_LON, SEED_LAT, 6)
+
+    response = _get_tile(client, tile)
+
+    assert not response.has_header("Content-Encoding")
+    assert response.content == RiverSectionVectorLayer().get_tile(
+        tile.x,
+        tile.y,
+        tile.z,
+    )
+
+
+def test_an_empty_cached_tile_is_no_content(client):
+    tile = mercantile.tile(SEED_LON, SEED_LAT, 6)
+
+    response = _get_tile(client, tile, accept_encoding="gzip")
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    assert not response.has_header("Content-Encoding")
+
+
+def test_tiles_above_the_threshold_are_not_cached(client):
     section = RiverSectionFactory(osm_way_id=800001, waterway="river")
-    layer = RiverSectionVectorLayer()
 
     lon, lat = section.geometry.coords[0]
     tile = mercantile.tile(lon, lat, 14)
-    assert layer.get_tile(tile.x, tile.y, tile.z)
+    assert _get_tile(client, tile).content
 
     RiverSection.objects.all().delete()
-    assert layer.get_tile(tile.x, tile.y, tile.z) == b""
+    assert _get_tile(client, tile).status_code == HTTPStatus.NO_CONTENT
 
 
 def test_sub_pixel_features_drop_out_when_zoomed_far_enough_out():

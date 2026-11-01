@@ -1,14 +1,22 @@
-"""Tile cache keys and targeted invalidation.
+"""Tile caching and targeted invalidation.
 
-Tiles below CACHE_BELOW_ZOOM_LEVEL are cached. Rather than dropping the whole
-cache whenever data changes, osm2pgsql tells us exactly which tiles a
-replication diff invalidated (see the expire output in waterways.lua) and we
-delete only those keys.
+Tiles below CACHE_BELOW_ZOOM_LEVEL are cached, one entry per z/x/y holding
+every layer, already gzipped. That spares gzipping the same tile again on
+every request, which for the biggest low-zoom tiles is tens of milliseconds,
+and it roughly halves the cache: measured, the snapped geometry compresses
+about five-fold at z0-z2 but only 1.3-fold at z10, where most entries are.
+Per layer would not do, because the view joins the layers' bytes and two gzip
+streams back to back are not one.
+
+Rather than dropping the whole cache whenever data changes, osm2pgsql tells us
+exactly which tiles a replication diff invalidated (see the expire output in
+waterways.lua) and we delete only those keys.
 
 Never call ``cache.clear()`` here: django-redis implements it as FLUSHDB, and a
 misconfigured deployment could point the cache at the Celery broker's database.
 """
 
+import gzip
 import logging
 from hashlib import md5
 
@@ -70,10 +78,32 @@ def bump_data_version() -> int:
     return version
 
 
-def tile_cache_key(layer_id: str, z: int, x: int, y: int, version: int) -> str:
+def tile_cache_key(z: int, x: int, y: int, version: int) -> str:
+    # "gzip" keeps these apart from the per-layer, uncompressed entries that
+    # came before, which would otherwise be served with a gzip header.
     return md5(  # noqa: S324
-        f"{layer_id}-{version}-{z}-{x}-{y}".encode(),
+        f"gzip-{version}-{z}-{x}-{y}".encode(),
     ).hexdigest()
+
+
+def cached_tile(layers, z: int, x: int, y: int) -> bytes:
+    """Every layer's tile at z/x/y, gzipped, from the cache or rendered into it.
+
+    An empty tile is cached as b"" rather than gzipped, so the view can still
+    answer 204 without decompressing anything.
+    """
+    key = tile_cache_key(z, x, y, get_data_version())
+    tile = cache.get(key)
+    if tile is not None:
+        return tile
+
+    # Concatenating encoded MVTs merges them: the layers field is repeated.
+    tile = b"".join(layer.get_tile(x, y, z) for layer in layers)
+    if tile:
+        # mtime=0 so the same tile always compresses to the same bytes.
+        tile = gzip.compress(tile, mtime=0)
+    cache.set(key, tile, timeout=TILE_CACHE_TIMEOUT_SECS)
+    return tile
 
 
 def expire_table() -> str:
@@ -103,14 +133,14 @@ def _drain_expired_tiles() -> list[tuple[int, int, int]]:
         return []
 
 
-def invalidate_expired_tiles(layer_ids: list[str]) -> int:
+def invalidate_expired_tiles() -> set[tuple[int, int, int]]:
     """Evict the cached tiles affected by the last replication update.
 
-    Returns the number of cache keys deleted.
+    Returns the (z, x, y) tiles evicted.
     """
     expired = _drain_expired_tiles()
     if not expired:
-        return 0
+        return set()
 
     # osm2pgsql refuses minzoom=0, so zoom 0 never appears in the expire table.
     # It is a single tile that any change at all invalidates, so drop it
@@ -118,17 +148,37 @@ def invalidate_expired_tiles(layer_ids: list[str]) -> int:
     tiles = set(expired) | {(0, 0, 0)}
 
     version = get_data_version()
-    keys = [
-        tile_cache_key(layer_id, z, x, y, version)
-        for layer_id in layer_ids
-        for (z, x, y) in tiles
-    ]
-    cache.delete_many(keys)
+    cache.delete_many([tile_cache_key(z, x, y, version) for (z, x, y) in tiles])
 
     logger.info(
-        "Invalidated %s cached tiles across %s layer(s) from %s expired entries",
-        len(keys),
-        len(layer_ids),
+        "Invalidated %s cached tiles from %s expired entries",
+        len(tiles),
         len(expired),
     )
-    return len(keys)
+    return tiles
+
+
+def high_effort_tiles(
+    tiles: set[tuple[int, int, int]],
+    max_zoom: int,
+) -> list[tuple[int, int, int]]:
+    """The tiles worth rendering ahead of the first request for them.
+
+    The lower the zoom, the more of the network a tile merges and the more
+    visitors share it, so these come first: a precache cut short then loses
+    only the cheapest tiles.
+    """
+    return sorted(tile for tile in tiles if tile[0] <= max_zoom)
+
+
+def precache_tiles(layers, tiles: list[tuple[int, int, int]]) -> int:
+    """Render tiles into the cache so no visitor waits on them.
+
+    Goes through cached_tile, as the view does, so a tile someone has requested
+    since it was evicted is a cache hit rather than a second render.
+
+    Returns the number of tiles rendered or found cached.
+    """
+    for z, x, y in tiles:
+        cached_tile(layers, z, x, y)
+    return len(tiles)

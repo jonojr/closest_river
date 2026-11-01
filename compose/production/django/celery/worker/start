@@ -4,5 +4,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# Don't start on a schema the django container hasn't migrated yet.
+source /wait-for-migrations
+
 
 exec celery -A config.celery_app worker -l INFO

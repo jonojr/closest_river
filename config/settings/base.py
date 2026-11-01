@@ -2,6 +2,7 @@
 """Base settings to build other settings files upon."""
 
 import ssl
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -90,6 +91,7 @@ THIRD_PARTY_APPS = [
     "allauth.mfa",
     "allauth.socialaccount",
     "django_celery_beat",
+    "django_celery_results",
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",
@@ -299,11 +301,20 @@ CELERY_BROKER_URL = REDIS_URL
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#redis-backend-use-ssl
 CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": ssl.CERT_NONE} if REDIS_SSL else None
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-CELERY_RESULT_BACKEND = REDIS_URL
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#redis-backend-use-ssl
-CELERY_REDIS_BACKEND_USE_SSL = CELERY_BROKER_USE_SSL
+# In the database rather than Redis, so every pipeline run is kept and browsable
+# in the admin ("Task results"): what it returned, or the traceback it failed
+# with. SyncState only remembers the last sync.
+CELERY_RESULT_BACKEND = "django-db"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
+# Records the task's name, arguments and worker alongside its result.
 CELERY_RESULT_EXTENDED = True
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-expires
+# Beat's built-in celery.backend_cleanup task deletes older results daily at
+# 04:00. A few runs a day, so a long history costs next to nothing.
+CELERY_RESULT_EXPIRES = timedelta(days=180)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-track-started
+# So an import that runs for hours shows as started, not just pending.
+CELERY_TASK_TRACK_STARTED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
 # https://github.com/celery/celery/pull/6122
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
@@ -359,6 +370,10 @@ OSM2PGSQL_STYLE = env(
 )
 OSM2PGSQL_CACHE_MB = env.int("OSM2PGSQL_CACHE_MB", default=2000)
 OSM_MAX_DIFF_SIZE_MB = env.int("OSM_MAX_DIFF_SIZE_MB", default=500)
+# After the daily sync, the evicted tiles up to this zoom are rendered back into
+# the cache rather than left for the first visitor to wait on. Lower zooms merge
+# more of the network and cost up to a second each; set to -1 to turn it off.
+TILE_PRECACHE_MAX_ZOOM = env.int("TILE_PRECACHE_MAX_ZOOM", default=8)
 
 # Self-hosted basemap
 # ------------------------------------------------------------------------------

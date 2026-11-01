@@ -1,4 +1,4 @@
-FROM docker.io/node:20-bookworm-slim AS client-builder
+FROM docker.io/node:26-bookworm-slim AS client-builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -16,7 +16,7 @@ RUN test -n "${MAPTILER_API_KEY}" \
   || { echo "MAPTILER_API_KEY build arg is not set; see docker-compose.production.yml" >&2; exit 1; }
 RUN npm run build
 # define an alias for the specific python version used in this file.
-FROM docker.io/python:3.12.15-slim-trixie AS python
+FROM docker.io/python:3.14.10-slim-trixie AS python
 
 # Python build stage
 FROM python AS python-build-stage
@@ -87,6 +87,8 @@ RUN sed -i 's/\r$//g' /entrypoint
 RUN chmod +x /entrypoint
 
 
+COPY --chown=django:django ./compose/production/django/wait-for-migrations /wait-for-migrations
+RUN sed -i 's/\r$//g' /wait-for-migrations
 COPY --chown=django:django ./compose/production/django/start /start
 RUN sed -i 's/\r$//g' /start
 RUN chmod +x /start

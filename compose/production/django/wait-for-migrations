@@ -1,0 +1,15 @@
+# Sourced (not run) by the Celery start scripts: hold the container until the
+# django container's /start has applied every migration. Otherwise a deploy
+# that adds a table races it - a worker picks up a queued task straight away
+# and fails to write to a table that is a few seconds from existing.
+#
+# Only the django container migrates, so two containers never run the same
+# migration at once.
+#
+# With DJANGO_MIGRATE_ON_START=false nothing will migrate, so don't wait.
+if [ "${DJANGO_MIGRATE_ON_START:-true}" != "false" ]; then
+    until python /app/manage.py migrate --check >/dev/null 2>&1; do
+        >&2 echo 'Waiting for the django container to apply migrations'
+        sleep 5
+    done
+fi

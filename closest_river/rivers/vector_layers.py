@@ -30,14 +30,10 @@ at z8, 52 KB at z10. Rendering the same z8 tile naively was 1.4 MB.
 """
 
 from django.conf import settings
-from django.core.cache import cache
 from django.db import connection
 from vectortiles import VectorLayer
 
 from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
-from closest_river.rivers.tile_cache import TILE_CACHE_TIMEOUT_SECS
-from closest_river.rivers.tile_cache import get_data_version
-from closest_river.rivers.tile_cache import tile_cache_key
 
 EARTH_CIRCUMFERENCE_M = 40075016.686
 # MapLibre renders a vector tile across 512 CSS pixels, not 256. Getting this
@@ -189,27 +185,13 @@ class WaterwayVectorLayer(VectorLayer):
         return tile.tobytes() if isinstance(tile, memoryview) else bytes(tile)
 
     def get_tile(self, x, y, z):
-        """Serve a tile, caching the low zoom levels.
-
-        Cached entries are evicted individually by the sync task using
-        osm2pgsql's expire output, so the cache stays fresh without a blanket
-        flush. The data version in the key covers full rebuilds, where
-        osm2pgsql emits no expiry information at all.
+        """Render this layer's tile. Never cached here: the low zooms are
+        cached by the tile view, all layers together and gzipped (see
+        tile_cache.cached_tile).
         """
         if not self.check_in_zoom_levels(z):
             return b""
-
-        if z >= CACHE_BELOW_ZOOM_LEVEL:
-            return self._render(x, y, z)
-
-        cache_key = tile_cache_key(self.get_id(), z, x, y, get_data_version())
-        tile = cache.get(cache_key)
-        if tile is not None:
-            return tile
-
-        tile = self._render(x, y, z)
-        cache.set(cache_key, tile, timeout=TILE_CACHE_TIMEOUT_SECS)
-        return tile
+        return self._render(x, y, z)
 
 
 class RiverSectionVectorLayer(WaterwayVectorLayer):
