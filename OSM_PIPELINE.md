@@ -183,6 +183,13 @@ only those cache keys. Two wrinkles:
   `SyncState.data_version` instead, which is mixed into every cache key and
   strands the lot at once.
 
+The cache holds one entry per tile with both layers in it, already gzipped,
+and the tile view serves it as-is with `Content-Encoding: gzip`, so
+`GZipMiddleware` does not compress it again on every request. It has to be the
+whole tile rather than one entry per layer: the view joins the layers' bytes,
+which merges encoded MVTs but not gzip streams. Tiles above the cache threshold
+are rendered per request and compressed by the middleware as before.
+
 **Never call `cache.clear()`.** django-redis implements it as `FLUSHDB`.
 
 Tiles are cached in their own Redis instance (`redis-cache`), separate from the

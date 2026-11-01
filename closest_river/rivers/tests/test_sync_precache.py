@@ -78,7 +78,7 @@ def test_precaching_puts_the_tiles_in_the_cache():
         ),
     )
     tile = mercantile.tile(SEED_LON, SEED_LAT, 6)
-    key = tile_cache_key("river-sections", 6, tile.x, tile.y, get_data_version())
+    key = tile_cache_key(6, tile.x, tile.y, get_data_version())
 
     # As it arrives from the broker: JSON has turned each tuple into a list.
     tasks.precache_high_effort_tiles([[6, tile.x, tile.y]])

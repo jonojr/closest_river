@@ -99,11 +99,6 @@ def sync_osm_waterways() -> dict:
     Afterwards it queues the costliest of the evicted tiles to be rendered
     again before anyone asks for them (see precache_high_effort_tiles).
     """
-    # Imported here to avoid pulling the tile layers (and their model imports)
-    # into every worker at module load.
-    from closest_river.rivers.views import RiverSectionBaseLayer
-
-    layer_ids = [layer.id for layer in RiverSectionBaseLayer.layer_classes]
     steps = _Steps("OSM sync", total=4)
 
     with _pipeline_lock("sync_osm_waterways", _SYNC_LOCK_TIMEOUT):
@@ -115,8 +110,8 @@ def sync_osm_waterways() -> dict:
         with steps.step("Analyzing tables"):
             osm_pipeline.analyze_schema(settings.OSM_SCHEMA)
         with steps.step("Invalidating changed tiles"):
-            expired = invalidate_expired_tiles(layer_ids)
-        tiles_expired = len(expired) * len(layer_ids)
+            expired = invalidate_expired_tiles()
+        tiles_expired = len(expired)
 
         state = SyncState.load()
         state.last_sync_at = timezone.now()
@@ -152,11 +147,13 @@ def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
     These merge the most of the network and can take a second each, so
     otherwise the first visitor after every sync pays for each one.
     """
-    from closest_river.rivers.views import RiverSectionBaseLayer
+    # Imported here to avoid pulling the tile layers (and their model imports)
+    # into every worker at module load.
+    from closest_river.rivers.views import RiverSectionTileView
 
-    layers = [layer_class() for layer_class in RiverSectionBaseLayer.layer_classes]
+    layers = RiverSectionTileView().get_layers()
     started = time.monotonic()
-    logger.info("Precaching %s tiles across %s layer(s)", len(tiles), len(layers))
+    logger.info("Precaching %s tiles", len(tiles))
 
     rendered = precache_tiles(layers, [tuple(tile) for tile in tiles])
 
