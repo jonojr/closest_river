@@ -147,7 +147,7 @@
                target="_blank"
                rel="noopener">OpenStreetMap</a>{% if osm_data_updated_at %},{% endif %}
             {% if osm_data_updated_at %}
-              updated
+              as of
               <time datetime="{{ osm_data_updated_at|date:'c' }}"
                     title="{{ osm_data_updated_at }}">{{ osm_data_updated_at|date:"j M Y, g:i a" }}</time>
             {% endif %}

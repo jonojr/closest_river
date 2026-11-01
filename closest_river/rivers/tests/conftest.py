@@ -107,3 +107,30 @@ def _clear_cache():
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.fixture
+def replication_properties():
+    """osm2pgsql's properties table, holding whatever the test puts in it.
+
+    Created inside the test's transaction, so it is rolled back afterwards.
+    """
+    properties = {}
+
+    def set_properties(**values):
+        properties.update(values)
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE SCHEMA IF NOT EXISTS osm_middle")
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS osm_middle.osm2pgsql_properties "
+                "(property text PRIMARY KEY, value text NOT NULL)",
+            )
+            for name, value in values.items():
+                cursor.execute(
+                    "INSERT INTO osm_middle.osm2pgsql_properties VALUES (%s, %s) "
+                    "ON CONFLICT (property) DO UPDATE SET value = EXCLUDED.value",
+                    [name, value],
+                )
+        return properties
+
+    return set_properties
