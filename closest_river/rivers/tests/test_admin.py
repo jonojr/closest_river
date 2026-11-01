@@ -209,7 +209,7 @@ def test_sync_state_still_loads_when_the_cache_is_down(
         msg = "Connection refused"
         raise RedisConnectionError(msg)
 
-    monkeypatch.setattr(admin_module, "cache_memory", unreachable)
+    monkeypatch.setattr(admin_module, "cache_stats", unreachable)
     url = reverse("admin:rivers_syncstate_change", args=[sync_state.pk])
 
     response = admin_client.get(url)
@@ -224,3 +224,27 @@ def test_sync_state_still_loads_when_the_cache_is_down(
 )
 def test_percent_does_not_round_a_sliver_away(value, shown):
     assert _percent(value) == shown
+
+
+def test_sync_state_shows_the_caches_memory_and_evictions(
+    admin_client,
+    sync_state,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        admin_module,
+        "cache_stats",
+        lambda: {
+            "used": 676 * 1024 * 1024,
+            "max": 2 * 1024 * 1024 * 1024,
+            "policy": "allkeys-lfu",
+            "evicted": 12345,
+            "uptime": 3 * 24 * 60 * 60,
+        },
+    )
+    url = reverse("admin:rivers_syncstate_change", args=[sync_state.pk])
+
+    response = admin_client.get(url)
+
+    assert "676.0\xa0MB used of 2.0\xa0GB, evicting by allkeys-lfu" in response.text
+    assert "12,345 keys evicted since Valkey started 3\xa0days ago" in response.text

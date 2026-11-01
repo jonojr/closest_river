@@ -152,16 +152,22 @@ def cache_coverage(max_zoom: int) -> list[ZoomCoverage]:
     return coverage
 
 
-def cache_memory() -> dict | None:
-    """Redis's own memory figures: used, maxmemory and the eviction policy."""
+def cache_stats() -> dict | None:
+    """Redis's own figures: memory used, maxmemory, the eviction policy, and
+    how many keys it has evicted since it started, which is how long ago
+    uptime says. Evictions are the sign the cache is too small: a few after a
+    burst are expected, a steady climb is not.
+    """
     redis = _redis_connection()
     if redis is None:
         return None
-    info = redis.info("memory")
+    info = redis.info()
     return {
         "used": info["used_memory"],
         "max": info["maxmemory"],
         "policy": info["maxmemory_policy"],
+        "evicted": info["evicted_keys"],
+        "uptime": info["uptime_in_seconds"],
     }
 
 

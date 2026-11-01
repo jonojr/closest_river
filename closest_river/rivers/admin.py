@@ -1,3 +1,4 @@
+from datetime import timedelta
 from itertools import groupby
 
 from django.conf import settings
@@ -9,6 +10,7 @@ from django.utils.html import format_html
 from django.utils.html import format_html_join
 from django.utils.timesince import timesince
 from django.utils.timezone import localtime
+from django.utils.timezone import now
 from redis.exceptions import RedisError
 
 from closest_river.rivers import osm_pipeline
@@ -18,7 +20,7 @@ from closest_river.rivers.models import SyncState
 from closest_river.rivers.models import WaterwayTile
 from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
 from closest_river.rivers.tile_cache import cache_coverage
-from closest_river.rivers.tile_cache import cache_memory
+from closest_river.rivers.tile_cache import cache_stats
 from closest_river.rivers.vector_layers import TILE_BUFFER
 from closest_river.rivers.vector_layers import TILE_EXTENT
 
@@ -152,18 +154,22 @@ class SyncStateAdmin(ReadOnlyOsmAdmin):
         every tile's key, and zoom 9-10 alone is 1.3 million of them.
         """
         try:
-            memory = cache_memory()
+            stats = cache_stats()
             coverage = cache_coverage(settings.TILE_PRECACHE_MAX_ZOOM)
         except RedisError as error:
             return f"Could not read the cache: {error}"
         summary = ""
-        if memory:
-            limit = filesizeformat(memory["max"]) if memory["max"] else "no limit"
+        if stats:
+            limit = filesizeformat(stats["max"]) if stats["max"] else "no limit"
+            started = now() - timedelta(seconds=stats["uptime"])
             summary = format_html(
-                "<p>{} used of {}, evicting by {}</p>",
-                filesizeformat(memory["used"]),
+                "<p>{} used of {}, evicting by {}.</p>"
+                "<p>{} keys evicted since Valkey started {} ago.</p>",
+                filesizeformat(stats["used"]),
                 limit,
-                memory["policy"],
+                stats["policy"],
+                f"{stats['evicted']:,}",
+                timesince(started),
             )
         rows = format_html_join(
             "",

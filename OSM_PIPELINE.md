@@ -116,6 +116,12 @@ the cache's total memory use, its limit and its eviction policy. It doesn't go
 past `TILE_PRECACHE_MAX_ZOOM` because it checks every tile's key, and zooms
 9–10 alone are 1.3 million keys.
 
+It also shows how many keys Valkey has evicted since it started. On the planet,
+zooms 0–8 take about 680 MB, and all the cached zooms are probably about 1.6 GB
+even if every tile is cached, so the 2 GB default should rarely need to evict
+anything. A few evictions after a burst are normal. If the count keeps going up,
+the cache is too small: raise `REDIS_CACHE_MAXMEMORY`.
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.

@@ -196,6 +196,16 @@ class FakeRedis:
         sizes, self.sizes = self.sizes, []
         return sizes
 
+    def info(self):
+        return {
+            "used_memory": 709_000_000,
+            "maxmemory": 2_147_483_648,
+            "maxmemory_policy": "allkeys-lfu",
+            "evicted_keys": 12,
+            "uptime_in_seconds": 3600,
+            "connected_clients": 4,
+        }
+
 
 def test_coverage_measures_memory_on_redis(monkeypatch):
     monkeypatch.setattr(tile_cache, "_redis_connection", FakeRedis)
@@ -211,4 +221,16 @@ def test_coverage_has_no_memory_figures_off_redis():
     _cache_tile(0, 0, 0)
 
     assert tile_cache.cache_coverage(0)[0].memory is None
-    assert tile_cache.cache_memory() is None
+    assert tile_cache.cache_stats() is None
+
+
+def test_stats_report_memory_and_evictions_on_redis(monkeypatch):
+    monkeypatch.setattr(tile_cache, "_redis_connection", FakeRedis)
+
+    assert tile_cache.cache_stats() == {
+        "used": 709_000_000,
+        "max": 2_147_483_648,
+        "policy": "allkeys-lfu",
+        "evicted": 12,
+        "uptime": 3600,
+    }
