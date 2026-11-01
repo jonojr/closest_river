@@ -56,17 +56,18 @@ def test_a_css_pixel_is_measured_against_a_512_unit_tile():
 
 
 def test_the_snap_grid_is_sub_pixel_where_channels_are_separable():
-    """At zoom 5 and up the grid must be finer than a device pixel.
+    """At zoom 4 and up the grid must be finer than a device pixel.
 
     A coarser grid is visible as a lattice, because snapping moves vertices
     onto rectangular grid points rather than just dropping them.
     """
-    for zoom in range(5, 15):
+    for zoom in range(4, 15):
         assert snap_size_metres(zoom) <= css_pixel_size_metres(zoom) / 2
 
     # Wider than that, a tile spans a continent and the fine grid triples its
     # size for a lattice nobody can resolve.
-    assert snap_size_metres(4) == pytest.approx(css_pixel_size_metres(4))
+    for zoom in range(4):
+        assert snap_size_metres(zoom) == pytest.approx(css_pixel_size_metres(zoom))
 
 
 def test_cached_zooms_read_the_generalised_tile_table():
