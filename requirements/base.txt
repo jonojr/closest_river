@@ -8,6 +8,9 @@ celery==5.6.3  # pyup: < 6.0  # https://github.com/celery/celery
 # Holds Django back: 2.9.0 pins Django<6.1. Upstream has lifted the cap and
 # runs CI against 6.1, but has not released it - revisit on 2.10.
 django-celery-beat==2.9.0  # https://github.com/celery/django-celery-beat
+# Task history in the admin. 2.6.0 classifies Django only up to 5.2, but sets
+# no upper bound, and its migrations and admin run on 6.0.
+django-celery-results==2.6.0  # https://github.com/celery/django-celery-results
 flower==2.2.0  # https://github.com/mher/flower
 django-vectortiles==1.0.2  # https://django-vectortiles.readthedocs.io/en/latest/usage.html
 # Django

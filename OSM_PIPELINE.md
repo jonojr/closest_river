@@ -100,6 +100,11 @@ The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.
 
+Every run of the sync, the rebuild and the basemap fetch is kept for 180 days
+in the admin under **Celery Results → Task results**: what it returned (for the
+sync, how many cache keys it evicted), or the traceback it failed with. A run
+in progress shows as `STARTED`.
+
 ## Monthly rebuild — do not skip this
 
 Feeding unfiltered planet diffs into a _filtered_ import has one known gap: if a
