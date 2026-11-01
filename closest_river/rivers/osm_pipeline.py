@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import time
 from collections import deque
+from datetime import datetime
 from http import HTTPStatus
 from pathlib import Path
 
@@ -471,6 +472,61 @@ def _schema_exists(cursor, schema: str) -> bool:
         [schema],
     )
     return cursor.fetchone() is not None
+
+
+def replication_properties() -> dict[str, str]:
+    """osm2pgsql's own record of the import and its replication cursor.
+
+    Kept in the middle schema, which every import and sync shares. Empty
+    before the first import, when osm2pgsql has not created the table.
+    """
+    middle = settings.OSM_MIDDLE_SCHEMA
+    with connection.cursor() as cursor:
+        # Checked first rather than caught: a failed query would poison the
+        # request's transaction (ATOMIC_REQUESTS), and this runs on every page.
+        cursor.execute("SELECT to_regclass(%s)", [f"{middle}.osm2pgsql_properties"])
+        if cursor.fetchone()[0] is None:
+            return {}
+        cursor.execute(
+            f'SELECT property, value FROM "{middle}".osm2pgsql_properties',  # noqa: S608
+        )
+        return dict(cursor.fetchall())
+
+
+def replication_timestamp() -> datetime | None:
+    """How current the data is: the time of the newest OSM edit applied.
+
+    Unlike SyncState.last_sync_at, this does not move when a sync runs but
+    applies nothing, so it shows a stalled feed for what it is. After a full
+    import it is the planet file's own timestamp.
+    """
+    value = replication_properties().get("replication_timestamp")
+    return datetime.fromisoformat(value) if value else None
+
+
+def schema_sizes() -> list[tuple[str, int]]:
+    """Every OSM schema in the database and its size on disk, largest first.
+
+    The live and middle schemas, plus anything else named after the live one:
+    the staging and retired copies a rebuild leaves, and hand-made backups.
+    """
+    live = settings.OSM_SCHEMA
+    copies = live.replace("_", "\\_") + "\\_%"
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT n.nspname,
+                   COALESCE(sum(pg_total_relation_size(c.oid))
+                            FILTER (WHERE c.relkind IN ('r', 'm')), 0)
+            FROM pg_namespace n
+            LEFT JOIN pg_class c ON c.relnamespace = n.oid
+            WHERE n.nspname IN (%s, %s) OR n.nspname LIKE %s
+            GROUP BY n.nspname
+            ORDER BY 2 DESC, 1
+            """,
+            [live, settings.OSM_MIDDLE_SCHEMA, copies],
+        )
+        return [(name, int(size)) for name, size in cursor.fetchall()]
 
 
 def analyze_schema(schema: str) -> None:
