@@ -109,6 +109,13 @@ results. They share the `osm` queue's single slot, so a 03:30 sync waits for
 any still queued; run it during the day. A tile that's already cached costs
 only a lookup, so running it again is harmless.
 
+Every 30 seconds the worker logs how far the current task has got, and each
+task's start and finish lines name its batch, so the log shows how far through
+the whole run it is:
+
+    Precaching 500 tiles (zoom 7), batch 12 of 175
+    Precached 214 of 500 tiles (42%), at zoom 7, in 3m 30s
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.

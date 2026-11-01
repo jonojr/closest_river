@@ -60,10 +60,13 @@ class Command(BaseCommand):
             raise CommandError(msg)
 
         tiles = every_tile(max_zoom)
-        batches = 0
-        for start in range(0, len(tiles), batch_size):
-            precache_high_effort_tiles.delay(tiles[start : start + batch_size])
-            batches += 1
+        starts = range(0, len(tiles), batch_size)
+        batches = len(starts)
+        for number, start in enumerate(starts, start=1):
+            precache_high_effort_tiles.delay(
+                tiles[start : start + batch_size],
+                batch=f"{number} of {batches}",
+            )
 
         self.stdout.write(
             self.style.SUCCESS(
