@@ -96,6 +96,19 @@ first visitor after every sync waits on each one. It runs on the `osm` queue
 after the sync releases its lock, and a failure there leaves the sync's own
 result alone. Set `TILE_PRECACHE_MAX_ZOOM=-1` to turn it off.
 
+To warm the whole cache rather than just what a sync evicted, such as after a
+deploy that changes the cache keys, queue every tile up to a zoom:
+
+    docker compose -f docker-compose.production.yml run --rm django python manage.py precache_tiles --max-zoom 6
+
+`--max-zoom` defaults to `TILE_PRECACHE_MAX_ZOOM`. Each zoom level has four
+times as many tiles as the one before it: zooms 0–6 are 5,461 tiles, and 0–8
+are 87,381. They are queued lowest zoom first, in batches of 500
+(`--batch-size`), and each batch runs as its own task, so each shows in Task
+results. They share the `osm` queue's single slot, so a 03:30 sync waits for
+any still queued; run it during the day. A tile that's already cached costs
+only a lookup, so running it again is harmless.
+
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
 reapplies the same diffs next time rather than skipping a day.
