@@ -212,8 +212,21 @@ are rendered per request and compressed by the middleware as before.
 
 Tiles are cached in their own Redis instance (`redis-cache`), separate from the
 Celery broker, for two reasons: that `FLUSHDB`, and because the tile cache wants
-`maxmemory` with `allkeys-lru` eviction — which on the broker would mean
+`maxmemory` with `allkeys-lfu` eviction — which on the broker would mean
 silently dropping queued tasks.
+
+It is LFU rather than LRU so that a bulk write cannot flush the hot tiles. A
+`precache_tiles` sweep writes far more tiles than are ever requested. Under LRU
+each of those writes would count as recent, and the sweep would push out the
+popular low-zoom tiles. Under LFU a new key starts with a low hit count, so the
+sweep's tiles that nobody requests are evicted first. Valkey decays the counts
+over time (`lfu-decay-time`, one minute by default), so tiles that were popular
+once but are not requested any more do not stay in the cache for ever.
+
+Eviction should be rare anyway. On the planet, zooms 0–8 take about 680 MB, and
+every cached zoom fully cached is projected at about 1.6 GB, inside the 2 GB
+default. LFU decides which tiles go when a burst of visitors does push the cache
+over its limit.
 
 `waterway_tile` is in Web Mercator (3857) rather than 4326 because flex only
 permits tile expiry on Web Mercator geometry columns.
