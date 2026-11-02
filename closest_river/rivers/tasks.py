@@ -16,6 +16,7 @@ from django.utils import timezone
 from closest_river.rivers import basemap
 from closest_river.rivers import osm_pipeline
 from closest_river.rivers.models import SyncState
+from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
 from closest_river.rivers.tile_cache import bump_data_version
 from closest_river.rivers.tile_cache import high_effort_tiles
 from closest_river.rivers.tile_cache import invalidate_expired_tiles
@@ -163,6 +164,49 @@ def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
         osm_pipeline.format_duration(time.monotonic() - started),
     )
     return {"tiles_precached": rendered}
+
+
+# Each batch is one precache_high_effort_tiles task, which is killed after three
+# hours. At up to a second a tile, 500 stays well inside that.
+DEFAULT_WARM_BATCH_SIZE = 500
+
+
+def every_tile(max_zoom: int) -> list[list[int]]:
+    """Every z/x/y tile from zoom 0 to max_zoom, lowest zoom first."""
+    return [
+        [z, x, y]
+        for z in range(max_zoom + 1)
+        for x in range(1 << z)
+        for y in range(1 << z)
+    ]
+
+
+def warm_tile_cache(
+    max_zoom: int,
+    batch_size: int = DEFAULT_WARM_BATCH_SIZE,
+) -> tuple[int, int]:
+    """Queue every tile up to max_zoom to be rendered into the cache.
+
+    Lowest zoom first, as precache_high_effort_tiles tasks of batch_size tiles
+    each on the osm queue. Returns how many tiles and tasks were queued.
+    """
+    highest_cached = CACHE_BELOW_ZOOM_LEVEL - 1
+    if not 0 <= max_zoom <= highest_cached:
+        msg = (
+            f"max zoom must be 0 to {highest_cached}: tiles above that are "
+            "never cached, so rendering them ahead would be wasted."
+        )
+        raise ValueError(msg)
+    if batch_size < 1:
+        msg = "batch size must be at least 1."
+        raise ValueError(msg)
+
+    tiles = every_tile(max_zoom)
+    batches = 0
+    for start in range(0, len(tiles), batch_size):
+        precache_high_effort_tiles.delay(tiles[start : start + batch_size])
+        batches += 1
+    return len(tiles), batches
 
 
 @app.task(

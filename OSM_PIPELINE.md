@@ -101,6 +101,10 @@ deploy that changes the cache keys, queue every tile up to a zoom:
 
     docker compose -f docker-compose.production.yml run --rm django python manage.py precache_tiles --max-zoom 6
 
+or, as a superuser, open the sync state in the admin (**Rivers → OSM sync
+states**), press **Warm tile cache** at the top right, pick the zooms and
+confirm. It queues the same tasks as the command, in batches of 500.
+
 `--max-zoom` defaults to `TILE_PRECACHE_MAX_ZOOM`. Each zoom level has four
 times as many tiles as the one before it: zooms 0–6 are 5,461 tiles, and 0–8
 are 87,381. They are queued lowest zoom first, in batches of 500
