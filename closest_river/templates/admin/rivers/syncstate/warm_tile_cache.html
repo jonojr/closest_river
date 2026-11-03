@@ -1,0 +1,43 @@
+{% extends "admin/base_site.html" %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }}{% endblock %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    › <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    › <a href="{% url 'admin:rivers_syncstate_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    › <a href="{% url 'admin:rivers_syncstate_change' sync_state.pk %}">{{ sync_state }}</a>
+    › {{ title }}
+  </div>
+{% endblock %}
+{% block content %}
+  <p>
+    Queues every tile from zoom 0 up to the zoom you pick to be rendered into the
+    cache, lowest zoom first, so no visitor waits on them. Use it after a deploy
+    that changes the cache keys; the daily sync already re-renders the tiles it
+    evicts. It does the same as <code>manage.py precache_tiles</code>.
+  </p>
+  <p>
+    The tasks share the <code>osm</code> queue's single slot, so a sync waits
+    for any still queued: run it during the day. A tile that is already cached
+    costs only a lookup, so running it again is harmless, but queueing it twice
+    doubles how long the queue is held.
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {% for field in form %}
+        <div class="form-row">
+          {{ field.errors }}
+          {{ field.label_tag }} {{ field }}
+          {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" class="default" value="Queue the tiles" />
+      <a href="{% url 'admin:rivers_syncstate_change' sync_state.pk %}"
+         class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

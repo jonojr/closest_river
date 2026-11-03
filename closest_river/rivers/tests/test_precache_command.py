@@ -81,12 +81,12 @@ def test_defaults_to_the_sync_precache_zoom(queued, settings):
 
 @pytest.mark.parametrize("max_zoom", [-1, CACHE_BELOW_ZOOM_LEVEL])
 def test_refuses_zooms_that_are_never_cached(queued, max_zoom):
-    with pytest.raises(CommandError, match="--max-zoom"):
+    with pytest.raises(CommandError, match="max zoom"):
         _run("--max-zoom", str(max_zoom))
 
     assert queued == []
 
 
 def test_refuses_an_empty_batch(queued):
-    with pytest.raises(CommandError, match="--batch-size"):
+    with pytest.raises(CommandError, match="batch size"):
         _run("--batch-size", "0")
