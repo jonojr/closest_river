@@ -18,6 +18,7 @@ misconfigured deployment could point the cache at the Celery broker's database.
 
 import gzip
 import logging
+import time
 from dataclasses import dataclass
 from hashlib import md5
 
@@ -46,6 +47,10 @@ _DATA_VERSION_CACHE_KEY = "rivers:data-version"
 # Short TTL: read on every cached tile request, so it must not hit the database
 # each time, but it also must not go stale for long after a rebuild.
 _DATA_VERSION_CACHE_SECS = 10
+
+# How often precaching logs how far it has got. A batch runs for minutes and a
+# sync's precache for up to hours, one tile at a time.
+PRECACHE_PROGRESS_SECONDS = 30
 
 
 def get_data_version() -> int:
@@ -254,8 +259,25 @@ def precache_tiles(layers, tiles: list[tuple[int, int, int]]) -> int:
     Goes through cached_tile, as the view does, so a tile someone has requested
     since it was evicted is a cache hit rather than a second render.
 
+    Logs how far it has got every PRECACHE_PROGRESS_SECONDS.
+
     Returns the number of tiles rendered or found cached.
     """
-    for z, x, y in tiles:
+    # Imported here: osm_pipeline imports this module.
+    from closest_river.rivers.osm_pipeline import format_duration
+
+    started = last_report = time.monotonic()
+    for done, (z, x, y) in enumerate(tiles, start=1):
         cached_tile(layers, z, x, y)
+        now = time.monotonic()
+        if now - last_report >= PRECACHE_PROGRESS_SECONDS and done < len(tiles):
+            last_report = now
+            logger.info(
+                "Precached %s of %s tiles (%d%%), at zoom %s, in %s",
+                done,
+                len(tiles),
+                100 * done // len(tiles),
+                z,
+                format_duration(now - started),
+            )
     return len(tiles)

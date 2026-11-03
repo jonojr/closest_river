@@ -5,6 +5,7 @@ changed, leave everything else alone, and never flush the whole cache.
 """
 
 import gzip
+import logging
 
 import pytest
 from django.core.cache import cache
@@ -234,3 +235,23 @@ def test_stats_report_memory_and_evictions_on_redis(monkeypatch):
         "evicted": 12,
         "uptime": 3600,
     }
+
+
+def test_precaching_logs_its_progress(monkeypatch, caplog):
+    monkeypatch.setattr(tile_cache, "PRECACHE_PROGRESS_SECONDS", 0)
+    caplog.set_level(logging.INFO, logger=tile_cache.__name__)
+
+    tile_cache.precache_tiles([FakeLayer(b"rivers")], [(0, 0, 0), (1, 0, 0), (1, 1, 0)])
+
+    progress = [r.getMessage() for r in caplog.records]
+    assert progress[0].startswith("Precached 1 of 3 tiles (33%), at zoom 0, in ")
+    assert progress[1].startswith("Precached 2 of 3 tiles (66%), at zoom 1, in ")
+    assert len(progress) == 2, "the task itself reports finishing"
+
+
+def test_precaching_logs_nothing_before_the_first_interval(caplog):
+    caplog.set_level(logging.INFO, logger=tile_cache.__name__)
+
+    tile_cache.precache_tiles([FakeLayer(b"rivers")], [(0, 0, 0), (1, 0, 0)])
+
+    assert caplog.records == []

@@ -258,7 +258,11 @@ def test_sync_state_shows_the_caches_memory_and_evictions(
 def queued(monkeypatch):
     """Capture each batch the warm-up queues instead of queueing it."""
     calls = []
-    monkeypatch.setattr(tasks.precache_high_effort_tiles, "delay", calls.append)
+    monkeypatch.setattr(
+        tasks.precache_high_effort_tiles,
+        "delay",
+        lambda tiles, **kwargs: calls.append(tiles),
+    )
     return calls
 
 

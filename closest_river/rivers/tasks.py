@@ -142,11 +142,17 @@ def sync_osm_waterways() -> dict:
     time_limit=3 * 60 * 60,
     soft_time_limit=2 * 60 * 60 + 45 * 60,
 )
-def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
+def precache_high_effort_tiles(
+    tiles: list[list[int]],
+    batch: str | None = None,
+) -> dict:
     """Render the low-zoom tiles a sync evicted back into the cache.
 
     These merge the most of the network and can take a second each, so
     otherwise the first visitor after every sync pays for each one.
+
+    batch, such as "3 of 175", says where this task falls in a precache_tiles
+    run, so the log shows how far through the whole run it is.
     """
     # Imported here to avoid pulling the tile layers (and their model imports)
     # into every worker at module load.
@@ -154,16 +160,26 @@ def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
 
     layers = RiverSectionTileView().get_layers()
     started = time.monotonic()
-    logger.info("Precaching %s tiles", len(tiles))
+    label = f"{len(tiles)} tiles"
+    if tiles:
+        lowest, highest = min(t[0] for t in tiles), max(t[0] for t in tiles)
+        zooms = str(lowest) if lowest == highest else f"{lowest}-{highest}"
+        label += f" (zoom {zooms})"
+    if batch:
+        label += f", batch {batch}"
+    logger.info("Precaching %s", label)
 
     rendered = precache_tiles(layers, [tuple(tile) for tile in tiles])
 
     logger.info(
-        "Precached %s tiles in %s",
-        rendered,
+        "Precached %s in %s",
+        label,
         osm_pipeline.format_duration(time.monotonic() - started),
     )
-    return {"tiles_precached": rendered}
+    result = {"tiles_precached": rendered}
+    if batch:
+        result["batch"] = batch
+    return result
 
 
 # Each batch is one precache_high_effort_tiles task, which is killed after three
@@ -202,10 +218,13 @@ def warm_tile_cache(
         raise ValueError(msg)
 
     tiles = every_tile(max_zoom)
-    batches = 0
-    for start in range(0, len(tiles), batch_size):
-        precache_high_effort_tiles.delay(tiles[start : start + batch_size])
-        batches += 1
+    starts = range(0, len(tiles), batch_size)
+    batches = len(starts)
+    for number, start in enumerate(starts, start=1):
+        precache_high_effort_tiles.delay(
+            tiles[start : start + batch_size],
+            batch=f"{number} of {batches}",
+        )
     return len(tiles), batches
 
 

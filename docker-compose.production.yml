@@ -93,7 +93,7 @@ services:
       - production_redis_data:/data
 
   # Separate instance from the broker. Cached tiles are bulky and long-lived,
-  # so this one is memory-capped with LRU eviction — which must never be
+  # so this one is memory-capped with LFU eviction — which must never be
   # applied to the instance holding the Celery queue, where evicting a key
   # means losing a task. No persistence: it is a cache.
   redis-cache:
@@ -101,7 +101,7 @@ services:
     command: >
       valkey-server
       --maxmemory ${REDIS_CACHE_MAXMEMORY:-2gb}
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy allkeys-lfu
       --save ""
 
   celeryworker:
