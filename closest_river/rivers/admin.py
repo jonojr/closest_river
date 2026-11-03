@@ -122,8 +122,8 @@ class SyncStateAdmin(ReadOnlyOsmAdmin):
         return [warm, *super().get_urls()]
 
     def has_warm_permission(self, request):
-        """Superusers only: a full warm holds the osm queue's single slot for
-        hours, and the sync waits behind it.
+        """Superusers only: a full warm holds the osm queue's single slot (about
+        30 minutes for zooms 0-8 on the planet), and the sync waits behind it.
         """
         return request.user.is_superuser
 

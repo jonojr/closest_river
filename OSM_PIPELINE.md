@@ -113,6 +113,13 @@ results. They share the `osm` queue's single slot, so a 03:30 sync waits for
 any still queued; run it during the day. A tile that's already cached costs
 only a lookup, so running it again is harmless.
 
+On the planet, a full warm of zooms 0–8 took about 30 minutes. A batch's time
+depends on how much land it covers, not on its zoom. The tiles are queued in
+order of longitude, so each batch is a north–south strip of the map. A strip of
+ocean takes seconds, and one across the Americas or Europe takes minutes. The
+first batch is the slowest: it holds every tile from zoom 0 to 4, and each of
+those covers a large part of the planet.
+
 Every 30 seconds the worker logs how far the current task has got, and each
 task's start and finish lines name its batch, so the log shows how far through
 the whole run it is:
@@ -128,8 +135,8 @@ past `TILE_PRECACHE_MAX_ZOOM` because it checks every tile's key, and zooms
 9–10 alone are 1.3 million keys.
 
 It also shows how many keys Valkey has evicted since it started. On the planet,
-zooms 0–8 take about 680 MB, and all the cached zooms are probably about 1.6 GB
-even if every tile is cached, so the 2 GB default should rarely need to evict
+zooms 0–8 fully cached take 549 MB, and all the cached zooms are probably about
+1.3 GB even if every tile is cached, so the 2 GB default should rarely need to evict
 anything. A few evictions after a burst are normal. If the count keeps going up,
 the cache is too small: raise `REDIS_CACHE_MAXMEMORY`.
 
@@ -247,9 +254,9 @@ sweep's tiles that nobody requests are evicted first. Valkey decays the counts
 over time (`lfu-decay-time`, one minute by default), so tiles that were popular
 once but are not requested any more do not stay in the cache for ever.
 
-Eviction should be rare anyway. On the planet, zooms 0–8 take about 680 MB, and
-every cached zoom fully cached is projected at about 1.6 GB, inside the 2 GB
-default. LFU decides which tiles go when a burst of visitors does push the cache
+Eviction should be rare anyway. On the planet, zooms 0–8 fully cached take
+549 MB, and every cached zoom fully cached is projected at about 1.3 GB, inside
+the 2 GB default. LFU decides which tiles go when a burst of visitors does push the cache
 over its limit.
 
 `waterway_tile` is in Web Mercator (3857) rather than 4326 because flex only
