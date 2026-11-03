@@ -18,6 +18,8 @@ misconfigured deployment could point the cache at the Celery broker's database.
 
 import gzip
 import logging
+import time
+from dataclasses import dataclass
 from hashlib import md5
 
 from django.core.cache import cache
@@ -45,6 +47,10 @@ _DATA_VERSION_CACHE_KEY = "rivers:data-version"
 # Short TTL: read on every cached tile request, so it must not hit the database
 # each time, but it also must not go stale for long after a rebuild.
 _DATA_VERSION_CACHE_SECS = 10
+
+# How often precaching logs how far it has got. A batch runs for minutes and a
+# sync's precache for up to hours, one tile at a time.
+PRECACHE_PROGRESS_SECONDS = 30
 
 
 def get_data_version() -> int:
@@ -104,6 +110,82 @@ def cached_tile(layers, z: int, x: int, y: int) -> bytes:
         tile = gzip.compress(tile, mtime=0)
     cache.set(key, tile, timeout=TILE_CACHE_TIMEOUT_SECS)
     return tile
+
+
+@dataclass(frozen=True)
+class ZoomCoverage:
+    zoom: int
+    cached: int
+    # Bytes the cached tiles take in Redis, keys and overhead included, or None
+    # where the cache backend cannot say.
+    memory: int | None
+
+    @property
+    def total(self) -> int:
+        return 4**self.zoom
+
+    @property
+    def percent(self) -> float:
+        return 100 * self.cached / self.total
+
+
+def cache_coverage(max_zoom: int) -> list[ZoomCoverage]:
+    """How many of each zoom's tiles are cached, from zoom 0 to max_zoom.
+
+    Checks every tile's key, so the cost grows four-fold a zoom: zoom 0-8 is
+    87,381 keys, a quarter of a second against a local Valkey. Zoom 9-10
+    would be 1.3 million.
+    """
+    version = get_data_version()
+    redis = _redis_connection()
+    coverage = []
+    for z in range(max_zoom + 1):
+        keys = [
+            tile_cache_key(z, x, y, version)
+            for x in range(1 << z)
+            for y in range(1 << z)
+        ]
+        if redis is None:
+            cached, memory = sum(cache.has_key(key) for key in keys), None
+        else:
+            pipeline = redis.pipeline(transaction=False)
+            for key in keys:
+                pipeline.memory_usage(cache.make_key(key))
+            sizes = [size for size in pipeline.execute() if size is not None]
+            cached, memory = len(sizes), sum(sizes)
+        coverage.append(ZoomCoverage(zoom=z, cached=cached, memory=memory))
+    return coverage
+
+
+def cache_stats() -> dict | None:
+    """Redis's own figures: memory used, maxmemory, the eviction policy, and
+    how many keys it has evicted since it started, which is how long ago
+    uptime says. Evictions are the sign the cache is too small: a few after a
+    burst are expected, a steady climb is not.
+    """
+    redis = _redis_connection()
+    if redis is None:
+        return None
+    info = redis.info()
+    return {
+        "used": info["used_memory"],
+        "max": info["maxmemory"],
+        "policy": info["maxmemory_policy"],
+        "evicted": info["evicted_keys"],
+        "uptime": info["uptime_in_seconds"],
+    }
+
+
+def _redis_connection():
+    """The cache's Redis client, or None if the cache is not django-redis, as
+    in the tests, which use the local-memory cache.
+    """
+    from django_redis import get_redis_connection
+
+    try:
+        return get_redis_connection("default")
+    except NotImplementedError:
+        return None
 
 
 def expire_table() -> str:
@@ -177,8 +259,25 @@ def precache_tiles(layers, tiles: list[tuple[int, int, int]]) -> int:
     Goes through cached_tile, as the view does, so a tile someone has requested
     since it was evicted is a cache hit rather than a second render.
 
+    Logs how far it has got every PRECACHE_PROGRESS_SECONDS.
+
     Returns the number of tiles rendered or found cached.
     """
-    for z, x, y in tiles:
+    # Imported here: osm_pipeline imports this module.
+    from closest_river.rivers.osm_pipeline import format_duration
+
+    started = last_report = time.monotonic()
+    for done, (z, x, y) in enumerate(tiles, start=1):
         cached_tile(layers, z, x, y)
+        now = time.monotonic()
+        if now - last_report >= PRECACHE_PROGRESS_SECONDS and done < len(tiles):
+            last_report = now
+            logger.info(
+                "Precached %s of %s tiles (%d%%), at zoom %s, in %s",
+                done,
+                len(tiles),
+                100 * done // len(tiles),
+                z,
+                format_duration(now - started),
+            )
     return len(tiles)

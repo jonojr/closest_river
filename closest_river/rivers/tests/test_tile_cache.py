@@ -5,6 +5,7 @@ changed, leave everything else alone, and never flush the whole cache.
 """
 
 import gzip
+import logging
 
 import pytest
 from django.core.cache import cache
@@ -157,3 +158,100 @@ def test_precaching_renders_each_tile_in_every_layer():
 
     assert tile_cache.precache_tiles(layers, [(0, 0, 0), (4, 8, 5)]) == 2
     assert all(layer.rendered == [(0, 0, 0), (4, 8, 5)] for layer in layers)
+
+
+def test_coverage_counts_the_cached_tiles_at_each_zoom():
+    _cache_tile(0, 0, 0)
+    _cache_tile(2, 1, 3)
+    _cache_tile(2, 3, 0, value=b"")  # an empty tile is still a cached one
+
+    coverage = tile_cache.cache_coverage(2)
+
+    assert [(zoom.zoom, zoom.cached, zoom.total) for zoom in coverage] == [
+        (0, 1, 1),
+        (1, 0, 4),
+        (2, 2, 16),
+    ]
+    assert coverage[2].percent == 12.5
+
+
+def test_coverage_ignores_tiles_stranded_by_a_rebuild():
+    _cache_tile(0, 0, 0)
+    tile_cache.bump_data_version()
+
+    assert tile_cache.cache_coverage(0)[0].cached == 0
+
+
+class FakeRedis:
+    """Answers MEMORY USAGE from the local-memory cache the tests run on, so
+    the Redis path is checked against the keys cached_tile actually writes.
+    """
+
+    def pipeline(self, transaction):
+        return self
+
+    def memory_usage(self, key):
+        self.sizes = [*getattr(self, "sizes", []), 100 if key in cache._cache else None]
+
+    def execute(self):
+        sizes, self.sizes = self.sizes, []
+        return sizes
+
+    def info(self):
+        return {
+            "used_memory": 709_000_000,
+            "maxmemory": 2_147_483_648,
+            "maxmemory_policy": "allkeys-lfu",
+            "evicted_keys": 12,
+            "uptime_in_seconds": 3600,
+            "connected_clients": 4,
+        }
+
+
+def test_coverage_measures_memory_on_redis(monkeypatch):
+    monkeypatch.setattr(tile_cache, "_redis_connection", FakeRedis)
+    _cache_tile(1, 0, 1)
+    _cache_tile(1, 1, 1)
+
+    zoom = tile_cache.cache_coverage(1)[1]
+
+    assert (zoom.cached, zoom.memory) == (2, 200)
+
+
+def test_coverage_has_no_memory_figures_off_redis():
+    _cache_tile(0, 0, 0)
+
+    assert tile_cache.cache_coverage(0)[0].memory is None
+    assert tile_cache.cache_stats() is None
+
+
+def test_stats_report_memory_and_evictions_on_redis(monkeypatch):
+    monkeypatch.setattr(tile_cache, "_redis_connection", FakeRedis)
+
+    assert tile_cache.cache_stats() == {
+        "used": 709_000_000,
+        "max": 2_147_483_648,
+        "policy": "allkeys-lfu",
+        "evicted": 12,
+        "uptime": 3600,
+    }
+
+
+def test_precaching_logs_its_progress(monkeypatch, caplog):
+    monkeypatch.setattr(tile_cache, "PRECACHE_PROGRESS_SECONDS", 0)
+    caplog.set_level(logging.INFO, logger=tile_cache.__name__)
+
+    tile_cache.precache_tiles([FakeLayer(b"rivers")], [(0, 0, 0), (1, 0, 0), (1, 1, 0)])
+
+    progress = [r.getMessage() for r in caplog.records]
+    assert progress[0].startswith("Precached 1 of 3 tiles (33%), at zoom 0, in ")
+    assert progress[1].startswith("Precached 2 of 3 tiles (66%), at zoom 1, in ")
+    assert len(progress) == 2, "the task itself reports finishing"
+
+
+def test_precaching_logs_nothing_before_the_first_interval(caplog):
+    caplog.set_level(logging.INFO, logger=tile_cache.__name__)
+
+    tile_cache.precache_tiles([FakeLayer(b"rivers")], [(0, 0, 0), (1, 0, 0)])
+
+    assert caplog.records == []

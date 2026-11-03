@@ -16,6 +16,7 @@ from django.utils import timezone
 from closest_river.rivers import basemap
 from closest_river.rivers import osm_pipeline
 from closest_river.rivers.models import SyncState
+from closest_river.rivers.tile_cache import CACHE_BELOW_ZOOM_LEVEL
 from closest_river.rivers.tile_cache import bump_data_version
 from closest_river.rivers.tile_cache import high_effort_tiles
 from closest_river.rivers.tile_cache import invalidate_expired_tiles
@@ -141,11 +142,17 @@ def sync_osm_waterways() -> dict:
     time_limit=3 * 60 * 60,
     soft_time_limit=2 * 60 * 60 + 45 * 60,
 )
-def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
+def precache_high_effort_tiles(
+    tiles: list[list[int]],
+    batch: str | None = None,
+) -> dict:
     """Render the low-zoom tiles a sync evicted back into the cache.
 
     These merge the most of the network and can take a second each, so
     otherwise the first visitor after every sync pays for each one.
+
+    batch, such as "3 of 175", says where this task falls in a precache_tiles
+    run, so the log shows how far through the whole run it is.
     """
     # Imported here to avoid pulling the tile layers (and their model imports)
     # into every worker at module load.
@@ -153,16 +160,72 @@ def precache_high_effort_tiles(tiles: list[list[int]]) -> dict:
 
     layers = RiverSectionTileView().get_layers()
     started = time.monotonic()
-    logger.info("Precaching %s tiles", len(tiles))
+    label = f"{len(tiles)} tiles"
+    if tiles:
+        lowest, highest = min(t[0] for t in tiles), max(t[0] for t in tiles)
+        zooms = str(lowest) if lowest == highest else f"{lowest}-{highest}"
+        label += f" (zoom {zooms})"
+    if batch:
+        label += f", batch {batch}"
+    logger.info("Precaching %s", label)
 
     rendered = precache_tiles(layers, [tuple(tile) for tile in tiles])
 
     logger.info(
-        "Precached %s tiles in %s",
-        rendered,
+        "Precached %s in %s",
+        label,
         osm_pipeline.format_duration(time.monotonic() - started),
     )
-    return {"tiles_precached": rendered}
+    result = {"tiles_precached": rendered}
+    if batch:
+        result["batch"] = batch
+    return result
+
+
+# Each batch is one precache_high_effort_tiles task, which is killed after three
+# hours. At up to a second a tile, 500 stays well inside that.
+DEFAULT_WARM_BATCH_SIZE = 500
+
+
+def every_tile(max_zoom: int) -> list[list[int]]:
+    """Every z/x/y tile from zoom 0 to max_zoom, lowest zoom first."""
+    return [
+        [z, x, y]
+        for z in range(max_zoom + 1)
+        for x in range(1 << z)
+        for y in range(1 << z)
+    ]
+
+
+def warm_tile_cache(
+    max_zoom: int,
+    batch_size: int = DEFAULT_WARM_BATCH_SIZE,
+) -> tuple[int, int]:
+    """Queue every tile up to max_zoom to be rendered into the cache.
+
+    Lowest zoom first, as precache_high_effort_tiles tasks of batch_size tiles
+    each on the osm queue. Returns how many tiles and tasks were queued.
+    """
+    highest_cached = CACHE_BELOW_ZOOM_LEVEL - 1
+    if not 0 <= max_zoom <= highest_cached:
+        msg = (
+            f"max zoom must be 0 to {highest_cached}: tiles above that are "
+            "never cached, so rendering them ahead would be wasted."
+        )
+        raise ValueError(msg)
+    if batch_size < 1:
+        msg = "batch size must be at least 1."
+        raise ValueError(msg)
+
+    tiles = every_tile(max_zoom)
+    starts = range(0, len(tiles), batch_size)
+    batches = len(starts)
+    for number, start in enumerate(starts, start=1):
+        precache_high_effort_tiles.delay(
+            tiles[start : start + batch_size],
+            batch=f"{number} of {batches}",
+        )
+    return len(tiles), batches
 
 
 @app.task(

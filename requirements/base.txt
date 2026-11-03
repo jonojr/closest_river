@@ -5,6 +5,11 @@ whitenoise==6.12.0  # https://github.com/evansd/whitenoise
 redis==6.4.0  # pyup: < 6.5  # kombu (via celery) pins redis-py below 6.5
 hiredis==3.5.0  # https://github.com/redis/hiredis-py
 celery==5.6.3  # pyup: < 6.0  # https://github.com/celery/celery
+# Pinned because celery doesn't pin it, so every image build took the newest.
+# The [redis] extra is what installs `packaging`, which kombu's redis transport
+# imports: kombu 5.7.0 moved it into that extra, and an image built without it
+# had no Celery worker that could start and no web process that could queue a task.
+kombu[redis]==5.6.2  # https://github.com/celery/kombu
 # Holds Django back: 2.9.0 pins Django<6.1. Upstream has lifted the cap and
 # runs CI against 6.1, but has not released it - revisit on 2.10.
 django-celery-beat==2.9.0  # https://github.com/celery/django-celery-beat

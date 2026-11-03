@@ -1,0 +1,8 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+  {% if can_warm_tile_cache %}
+    <li><a href="{% url 'admin:rivers_syncstate_warm_tile_cache' %}">Warm tile cache</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

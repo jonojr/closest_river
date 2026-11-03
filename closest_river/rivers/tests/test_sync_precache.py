@@ -5,6 +5,8 @@ sync renders the ones it evicted back into the cache rather than leaving the
 first visitor to wait on every one.
 """
 
+import logging
+
 import mercantile
 import pytest
 from django.contrib.gis.geos import LineString
@@ -84,3 +86,17 @@ def test_precaching_puts_the_tiles_in_the_cache():
     tasks.precache_high_effort_tiles([[6, tile.x, tile.y]])
 
     assert cache.get(key), "the river tile should be cached before anyone asks"
+
+
+def test_precaching_logs_the_zooms_and_which_batch_it_is(caplog):
+    caplog.set_level(logging.INFO, logger=tasks.__name__)
+
+    result = tasks.precache_high_effort_tiles(
+        [[4, 14, 9], [6, 57, 39]],
+        batch="3 of 175",
+    )
+
+    assert result == {"tiles_precached": 2, "batch": "3 of 175"}
+    messages = [r.getMessage() for r in caplog.records]
+    assert messages[0] == "Precaching 2 tiles (zoom 4-6), batch 3 of 175"
+    assert messages[1].startswith("Precached 2 tiles (zoom 4-6), batch 3 of 175 in ")

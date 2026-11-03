@@ -101,6 +101,10 @@ deploy that changes the cache keys, queue every tile up to a zoom:
 
     docker compose -f docker-compose.production.yml run --rm django python manage.py precache_tiles --max-zoom 6
 
+or, as a superuser, open the sync state in the admin (**Rivers → OSM sync
+states**), press **Warm tile cache** at the top right, pick the zooms and
+confirm. It queues the same tasks as the command, in batches of 500.
+
 `--max-zoom` defaults to `TILE_PRECACHE_MAX_ZOOM`. Each zoom level has four
 times as many tiles as the one before it: zooms 0–6 are 5,461 tiles, and 0–8
 are 87,381. They are queued lowest zoom first, in batches of 500
@@ -108,6 +112,26 @@ are 87,381. They are queued lowest zoom first, in batches of 500
 results. They share the `osm` queue's single slot, so a 03:30 sync waits for
 any still queued; run it during the day. A tile that's already cached costs
 only a lookup, so running it again is harmless.
+
+Every 30 seconds the worker logs how far the current task has got, and each
+task's start and finish lines name its batch, so the log shows how far through
+the whole run it is:
+
+    Precaching 500 tiles (zoom 7), batch 12 of 175
+    Precached 214 of 500 tiles (42%), at zoom 7, in 3m 30s
+
+To see how much of the cache is filled, open the sync state in the admin (**Rivers → OSM sync
+states**). Its **Tile cache** section shows how many of each zoom's tiles are
+cached, up to `TILE_PRECACHE_MAX_ZOOM`, and how much memory they take, next to
+the cache's total memory use, its limit and its eviction policy. It doesn't go
+past `TILE_PRECACHE_MAX_ZOOM` because it checks every tile's key, and zooms
+9–10 alone are 1.3 million keys.
+
+It also shows how many keys Valkey has evicted since it started. On the planet,
+zooms 0–8 take about 680 MB, and all the cached zooms are probably about 1.6 GB
+even if every tile is cached, so the 2 GB default should rarely need to evict
+anything. A few evictions after a burst are normal. If the count keeps going up,
+the cache is too small: raise `REDIS_CACHE_MAXMEMORY`.
 
 The replication cursor lives in osm2pgsql's properties table and is written **in
 the same transaction as the data**, so an interrupted run rolls back and simply
@@ -212,8 +236,21 @@ are rendered per request and compressed by the middleware as before.
 
 Tiles are cached in their own Redis instance (`redis-cache`), separate from the
 Celery broker, for two reasons: that `FLUSHDB`, and because the tile cache wants
-`maxmemory` with `allkeys-lru` eviction — which on the broker would mean
+`maxmemory` with `allkeys-lfu` eviction — which on the broker would mean
 silently dropping queued tasks.
+
+It is LFU rather than LRU so that a bulk write cannot flush the hot tiles. A
+`precache_tiles` sweep writes far more tiles than are ever requested. Under LRU
+each of those writes would count as recent, and the sweep would push out the
+popular low-zoom tiles. Under LFU a new key starts with a low hit count, so the
+sweep's tiles that nobody requests are evicted first. Valkey decays the counts
+over time (`lfu-decay-time`, one minute by default), so tiles that were popular
+once but are not requested any more do not stay in the cache for ever.
+
+Eviction should be rare anyway. On the planet, zooms 0–8 take about 680 MB, and
+every cached zoom fully cached is projected at about 1.6 GB, inside the 2 GB
+default. LFU decides which tiles go when a burst of visitors does push the cache
+over its limit.
 
 `waterway_tile` is in Web Mercator (3857) rather than 4326 because flex only
 permits tile expiry on Web Mercator geometry columns.
