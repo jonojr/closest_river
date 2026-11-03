@@ -287,7 +287,7 @@ REDIS_URL = env("REDIS_URL", default="redis://redis:6379/0")
 REDIS_SSL = REDIS_URL.startswith("rediss://")
 # The cache runs on its own Redis instance, for two reasons: django-redis
 # implements cache.clear() as FLUSHDB, which on a shared instance would drop the
-# task queue; and cached tiles need memory-capped LRU eviction, which would mean
+# task queue; and cached tiles need memory-capped LFU eviction, which would mean
 # silently losing queued tasks if it were applied to the broker.
 REDIS_CACHE_URL = env("REDIS_CACHE_URL", default="redis://redis-cache:6379/0")
 

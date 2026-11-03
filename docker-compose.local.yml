@@ -55,12 +55,12 @@ services:
       - closest_river_local_redis_data:/data
 
   # Separate instance from the broker. Cached tiles are bulky and long-lived,
-  # so this one is memory-capped with LRU eviction — which must never be
+  # so this one is memory-capped with LFU eviction — which must never be
   # applied to the instance holding the Celery queue.
   redis-cache:
     image: valkey/valkey:7
     container_name: closest_river_local_redis_cache
-    command: valkey-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ''
+    command: valkey-server --maxmemory 256mb --maxmemory-policy allkeys-lfu --save ''
 
   celeryworker:
     <<: *django
